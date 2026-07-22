@@ -1,0 +1,63 @@
+<Window x:Class="Dm40.App.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="设置" Width="460" Height="560"
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource FgBrush}"
+        FontFamily="Microsoft YaHei" WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize">
+    <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrushColor}" BorderThickness="1" CornerRadius="10" Margin="14" Padding="20">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+            <!-- 波形设置 -->
+            <TextBlock Text="波形" FontSize="15" FontWeight="Bold" Margin="0,0,0,12"/>
+            <DockPanel Margin="0,0,0,6">
+                <TextBlock Text="时间窗口" VerticalAlignment="Center" DockPanel.Dock="Left"/>
+            </DockPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                <RadioButton x:Name="Win30" GroupName="win" Content="30s" Foreground="{StaticResource FgBrush}" Margin="0,0,14,0" VerticalAlignment="Center" Checked="OnWinChecked"/>
+                <RadioButton x:Name="Win60" GroupName="win" Content="60s" IsChecked="True" Foreground="{StaticResource FgBrush}" Margin="0,0,14,0" VerticalAlignment="Center" Checked="OnWinChecked"/>
+                <RadioButton x:Name="Win300" GroupName="win" Content="5 分钟" Foreground="{StaticResource FgBrush}" Margin="0,0,14,0" VerticalAlignment="Center" Checked="OnWinChecked"/>
+                <RadioButton x:Name="Win600" GroupName="win" Content="10 分钟" Foreground="{StaticResource FgBrush}" Margin="0,0,14,0" VerticalAlignment="Center" Checked="OnWinChecked"/>
+                <RadioButton x:Name="WinCustom" GroupName="win" Content="自定义" Foreground="{StaticResource FgBrush}" VerticalAlignment="Center" Checked="OnWinChecked"/>
+            </StackPanel>
+            <DockPanel Margin="0,0,0,16">
+                <TextBlock Text="自定义秒数" VerticalAlignment="Center" DockPanel.Dock="Left" Margin="0,0,8,0"/>
+                <TextBox x:Name="CustomWinBox" Style="{StaticResource DarkInput}" Width="90" HorizontalAlignment="Left" IsEnabled="False"/>
+            </DockPanel>
+
+            <Border BorderBrush="{StaticResource BorderBrushColor}" BorderThickness="0,1,0,0" Margin="0,0,0,16"/>
+
+            <!-- 设备连接 -->
+            <TextBlock Text="设备" FontSize="15" FontWeight="Bold" Margin="0,0,0,12"/>
+            <CheckBox x:Name="AutoConnectBox" Content="扫描到设备后自动连接第一个" Foreground="{StaticResource FgBrush}" FontSize="12" Margin="0,0,0,16"/>
+
+            <!-- 截图 -->
+            <TextBlock Text="截图" FontSize="15" FontWeight="Bold" Margin="0,0,0,12"/>
+            <DockPanel Margin="0,0,0,16">
+                <TextBlock Text="保存目录" VerticalAlignment="Center" DockPanel.Dock="Left" Margin="0,0,8,0"/>
+                <Button Style="{StaticResource CtrlBtn}" Content="浏览…" DockPanel.Dock="Right" Padding="10,3" Margin="8,0,0,0" Click="OnBrowseShotDir"/>
+                <TextBox x:Name="ShotDirBox" Style="{StaticResource DarkInput}" VerticalAlignment="Center"/>
+            </DockPanel>
+
+            <Border BorderBrush="{StaticResource BorderBrushColor}" BorderThickness="0,1,0,0" Margin="0,0,0,16"/>
+
+            <!-- 快捷键说明 -->
+            <TextBlock Text="快捷键 / 交互" FontSize="15" FontWeight="Bold" Margin="0,0,0,12"/>
+            <StackPanel Margin="0,0,0,16">
+                <TextBlock Text="P — 暂停 / 继续波形刷新" Foreground="{StaticResource FgDimBrush}" FontSize="11" Margin="0,0,0,5"/>
+                <TextBlock Text="R — 开始 / 停止录制" Foreground="{StaticResource FgDimBrush}" FontSize="11" Margin="0,0,0,5"/>
+                <TextBlock Text="Ctrl+S — 导出当前波形缓冲为 CSV" Foreground="{StaticResource FgDimBrush}" FontSize="11" Margin="0,0,0,5"/>
+                <TextBlock Text="Ctrl+C — 复制当前读数到剪贴板" Foreground="{StaticResource FgDimBrush}" FontSize="11" Margin="0,0,0,5"/>
+                <TextBlock Text="Ctrl+P — 一键截图保存到设置目录" Foreground="{StaticResource FgDimBrush}" FontSize="11" Margin="0,0,0,5"/>
+                <TextBlock Text="拖拽框选 — 区域缩放；双击 — 还原" Foreground="{StaticResource FgDimBrush}" FontSize="11" Margin="0,0,0,5"/>
+                <TextBlock Text="滚轮 — 缩放；底部缩略条 — 平移/选区缩放" Foreground="{StaticResource FgDimBrush}" FontSize="11"/>
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Style="{StaticResource CtrlBtn}" Content="取消" Click="OnCancel" Padding="18,7" Margin="6,0,0,0"/>
+                <Button Style="{StaticResource AccentBtn}" Content="保存" Click="OnSave" Padding="18,7" Margin="6,0,0,0"/>
+            </StackPanel>
+        </StackPanel>
+        </ScrollViewer>
+    </Border>
+</Window>

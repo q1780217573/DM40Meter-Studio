@@ -1,0 +1,27 @@
+# ---- 构建产物 ----
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+*.user
+*.suo
+.vs/
+
+# ---- 测试运行结果 ----
+TestResults/
+*.trx
+
+# ---- WebView2 运行时用户数据（体积大、机器相关）----
+*.WebView2/
+
+# ---- 运行期日志 / 崩溃转储 ----
+logs/
+fatal-error.log
+
+# ---- NuGet ----
+*.nupkg
+packages/
+
+# ---- 系统 / 编辑器 ----
+Thumbs.db
+Desktop.ini

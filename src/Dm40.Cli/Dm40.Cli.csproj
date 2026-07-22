@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>8.0</LangVersion>
+    <AssemblyName>Dm40.Cli</AssemblyName>
+    <RootNamespace>Dm40.Cli</RootNamespace>
+    <!-- CLI 逻辑库：stdout/stderr/数据源/时钟均可注入，故可完全离线单测。 -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Dm40.Core\Dm40.Core.csproj" />
+    <ProjectReference Include="..\Dm40.Protocol\Dm40.Protocol.csproj" />
+  </ItemGroup>
+
+</Project>

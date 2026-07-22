@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DM40Meter Studio - 交互式高保真原型 (v3 · 画布版)</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap">
+<link rel="stylesheet" href="https://db.onlinewebfonts.com/c/14936bb7a4b6575fd2eee80a3ab52cc2?family=Feather+Bold">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #0f1117; overflow: hidden; }
+.scrollable-container { overflow-y: auto; height: 100vh; }
+.scrollable-container::-webkit-scrollbar { width: 8px; height: 8px; }
+.scrollable-container::-webkit-scrollbar-thumb { background: #3a3f4b; border-radius: 4px; }
+.scrollable-container::-webkit-scrollbar-track { background: transparent; }
+#right-panel::-webkit-scrollbar-thumb { background: #d7d7d7; }
+#sidebar-nav::-webkit-scrollbar-thumb { background: #d7d7d7; }
+
+/* 无限画布（浅色点阵，Duolingo 外壳风格） */
+#left-panel { overflow: auto; height: 100vh; cursor: grab; background:
+  radial-gradient(circle, #d4d9de 1.2px, transparent 1.2px) 0 0 / 28px 28px, #f4f6f8; }
+#left-panel.panning { cursor: grabbing; }
+#canvas-content { position: relative; width: 2360px; height: 1420px; transform-origin: 0 0; }
+
+.digital-font { font-family: "Consolas", "Courier New", monospace; letter-spacing: 2px; }
+.reading-glow { text-shadow: 0 0 24px rgba(79, 70, 229, 0.55), 0 0 6px rgba(129, 140, 248, 0.8); }
+.panel { background: linear-gradient(160deg, #1a1d27 0%, #161922 100%); border: 1px solid #2a2f3d; border-radius: 12px; }
+.btn-ctrl { transition: all .15s ease; cursor: pointer; user-select: none; }
+.btn-ctrl:hover { transform: translateY(-1px); border-color: #4F46E5 !important; color: #c7d2fe; box-shadow: 0 4px 14px rgba(79,70,229,.25); }
+.btn-ctrl:active { transform: translateY(0); }
+.btn-ctrl.active { background: #4F46E5 !important; color: #fff !important; border-color: #6366f1 !important; box-shadow: 0 0 12px rgba(99,102,241,.5); }
+
+.app-window { position: absolute; width: 980px; border-radius: 8px; overflow: hidden;
+  border: 1px solid #3a4152; box-shadow: 0 16px 48px rgba(16,15,62,.18); background:#12151d; z-index: 10;
+  transition: box-shadow .3s, border-color .3s; }
+.app-window.flash { border-color: #4FC3F7; box-shadow: 0 0 0 3px rgba(79,195,247,.45), 0 16px 48px rgba(16,15,62,.18); }
+.view-label { position: absolute; z-index: 10; font-size: 12px; color: #777777; letter-spacing: 1px; font-family: 'Nunito', sans-serif; font-weight: 700; }
+.view-label .lv { background:#fff; border:1px solid #e5e5e5; border-radius:20px; padding:2px 10px; margin-right:6px; color: rgb(79,195,247); font-weight: 800; }
+
+.app-tab { cursor: pointer; transition: color .15s, border-color .15s; border-bottom: 2px solid transparent; color: #9ca3af; }
+.app-tab.active { color: #a5b4fc; border-bottom-color: #6366f1; }
+
+/* 原型预览外壳（Duolingo 风格指南，文档工具，非软件界面） */
+:root {
+  --green: rgb(79, 195, 247);
+  --green-hover: rgb(41, 182, 246);
+  --green-shadow: #29B6F6;
+  --dark-blue: rgb(16, 15, 62);
+  --blue: rgb(28, 176, 246);
+  --gray-text: rgb(75, 75, 75);
+  --gray-light: rgb(119, 119, 119);
+  --border-color: rgb(229, 229, 229);
+  --nav-text: rgb(175, 175, 175);
+  --red: #FF4B4B;
+  --orange: #FF9600;
+  --golden: #FFC800;
+}
+#sidebar-nav, #right-panel, .zoom-controls {
+  font-family: 'Nunito', 'DIN Round Pro', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+.feather-font { font-family: 'Feather Bold', 'Nunito', sans-serif; }
+.duo-logo-box { width: 40px; height: 40px; border-radius: 12px; background: var(--green);
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 20px; }
+.duo-logo-box.sm { width: 32px; height: 32px; border-radius: 10px; font-size: 16px; }
+.duo-caption { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; color: var(--nav-text);
+  display: flex; align-items: center; gap: 8px; }
+.duo-caption::after { content: ''; flex: 1; height: 1px; background: var(--border-color); }
+
+/* 右侧批注卡片（扁平简约风） */
+.duo-desc-card { background: #fff; border: 1px solid var(--border-color); border-radius: 12px;
+  transition: border-color .15s ease; }
+.duo-desc-card:hover { border-color: #c9d4e4; }
+.duo-desc-card h4 { font-family: 'Feather Bold', 'Nunito', sans-serif; color: var(--dark-blue); letter-spacing: .3px; }
+.duo-desc-card .fr-pill { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 800;
+  background: rgba(79,195,247,.08); color: var(--green); margin-bottom: 4px; }
+
+.nav-item { transition: all .12s ease; cursor: pointer; background: #fff;
+  border: 1px solid var(--border-color); border-radius: 12px;
+  color: var(--gray-text); }
+.nav-item:hover { background: rgba(79,195,247,.05); border-color: var(--green); color: var(--green-hover); }
+.nav-item.nav-active { background: rgba(79,195,247,.08); border-color: var(--green);
+  color: var(--green-hover) !important; font-weight: 800; }
+.nav-item .num-pill { width: 26px; height: 26px; border-radius: 50%; background: rgba(175,175,175,.18);
+  color: var(--gray-light); display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 800; flex-shrink: 0; transition: all .12s ease; }
+.nav-item:hover .num-pill { background: rgba(79,195,247,.15); color: var(--green-hover); }
+.nav-item.nav-active .num-pill { background: var(--green); color: #fff; }
+
+.duo-hint-card { background: #fff; border: 1px solid var(--border-color); border-radius: 12px; }
+.duo-badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 20px;
+  font-size: 11px; font-weight: 800; }
+.duo-progress-track { height: 10px; background: var(--border-color); border-radius: 5px; overflow: hidden; }
+.duo-progress-fill { height: 100%; border-radius: 5px; background: var(--green); transition: width .6s ease; }
+
+.anno-badge { z-index: 20; box-shadow: 0 2px 8px rgba(0,0,0,.5); }
+
+@keyframes rec-blink { 0%,100% {opacity:1;} 50% {opacity:.25;} }
+.rec-dot { animation: rec-blink 1.2s infinite; }
+@keyframes dash-flow { to { stroke-dashoffset: -40; } }
+.wave-flow { animation: dash-flow 2s linear infinite; }
+
+.divider-v { width: 2px; background: #e5e5e5; }
+.badge { border: 1px solid #3b4256; background: #232838; border-radius: 6px; }
+.mono-table td, .mono-table th { padding: 4px 10px; border-bottom: 1px solid #262b38; }
+.hidden { display: none !important; }
+
+.zoom-controls { position: fixed; top: 14px; right: 285px; z-index: 60; display: flex; gap: 8px; align-items: center;
+  background: #fff; border: 1px solid var(--border-color); border-radius: 12px; padding: 6px 10px; }
+.zoom-controls button { background:#fff; border:1px solid var(--border-color); color:var(--gray-text); border-radius:8px;
+  width:30px; height:30px; cursor:pointer; font-weight:800; font-family:inherit; }
+.zoom-controls button:hover { border-color:var(--green); color:var(--green-hover); background:rgba(79,195,247,.06); }
+</style>
+</head>
+<body>
+
+<div class="flex w-full" style="height: 100vh;">
+
+  <!-- ================= 最左侧：原型预览导航（Duolingo 风格，文档工具，非软件界面） ================= -->
+  <div id="sidebar-nav" class="scrollable-container flex flex-col gap-3 p-4" style="width: 224px; flex-shrink:0; background:#fafafa; border-right:2px solid #e5e5e5;">
+
+    <!-- 品牌头 -->
+    <div class="flex items-center gap-2.5 pb-3" style="border-bottom:2px solid #e5e5e5;">
+      <div class="duo-logo-box">🧭</div>
+      <div>
+        <div class="feather-font" style="font-size: 19px; color: rgb(79,195,247); line-height: 1.1;">prototype nav</div>
+        <div style="font-size: 10px; font-weight: 700; color: rgb(175,175,175); letter-spacing: 1.5px;">原型视图导航</div>
+      </div>
+    </div>
+
+    <!-- 说明 -->
+    <div style="font-size: 11px; font-weight: 600; color: rgb(119,119,119); line-height: 1.6; padding: 0 2px;">
+      本导航仅用于 PRD 预览定位视图，<b style="color: rgb(75,75,75);">不属于软件界面</b>。中间为页面流程画布。
+    </div>
+
+    <!-- 视图列表 -->
+    <div class="duo-caption">视图列表</div>
+    <div class="nav-item nav-active flex items-center gap-2.5 px-3 py-2.5" data-view="win-monitor" onclick="switchView('win-monitor')">
+      <span class="num-pill">1</span>
+      <div style="font-size: 13px; font-weight: 700; line-height: 1.25;">实时监测<br><span style="font-size: 10px; font-weight: 600; opacity: .65;">主界面 · L1</span></div>
+    </div>
+    <div class="nav-item flex items-center gap-2.5 px-3 py-2.5" data-view="win-raw" onclick="switchView('win-raw')">
+      <span class="num-pill">2</span>
+      <div style="font-size: 13px; font-weight: 700; line-height: 1.25;">原始报文<br><span style="font-size: 10px; font-weight: 600; opacity: .65;">页签视图 · L2</span></div>
+    </div>
+    <div class="nav-item flex items-center gap-2.5 px-3 py-2.5" data-view="win-replay" onclick="switchView('win-replay')">
+      <span class="num-pill">3</span>
+      <div style="font-size: 13px; font-weight: 700; line-height: 1.25;">数据回放<br><span style="font-size: 10px; font-weight: 600; opacity: .65;">页签视图 · L2</span></div>
+    </div>
+    <div class="nav-item flex items-center gap-2.5 px-3 py-2.5" data-view="win-settings" onclick="switchView('win-settings')">
+      <span class="num-pill">4</span>
+      <div style="font-size: 13px; font-weight: 700; line-height: 1.25;">设置对话框<br><span style="font-size: 10px; font-weight: 600; opacity: .65;">模态弹窗 · L2</span></div>
+    </div>
+
+    <!-- 进度 -->
+    <div class="px-1">
+      <div class="flex justify-between items-center mb-1" style="font-size: 10px; font-weight: 800; color: rgb(175,175,175); letter-spacing: 1px;">
+        <span>视图覆盖</span><span style="color: rgb(79,195,247);">4/4</span>
+      </div>
+      <div class="duo-progress-track"><div class="duo-progress-fill" style="width: 100%;"></div></div>
+    </div>
+
+    <div class="flex-1"></div>
+
+    <!-- 画布操作提示卡 -->
+    <div class="duo-hint-card p-3">
+      <div class="duo-caption mb-2">画布操作</div>
+      <div class="flex flex-col gap-1.5">
+        <span class="duo-badge" style="background: rgba(28,176,246,.12); color: rgb(28,176,246);">🖱 空白拖拽 · 平移</span>
+        <span class="duo-badge" style="background: rgba(255,150,0,.12); color: rgb(255,150,0);">⌃ Ctrl+滚轮 · 缩放</span>
+        <span class="duo-badge" style="background: rgba(79,195,247,.12); color: rgb(79,195,247);">👆 点击导航 · 定位</span>
+      </div>
+    </div>
+
+    <!-- 页脚 -->
+    <div class="text-center" style="font-size: 10px; font-weight: 700; color: rgb(175,175,175); letter-spacing: .5px;">
+      对应 PRD 第 7 章 · 原型与交互说明
+    </div>
+  </div>
+
+  <!-- ================= 中间：无限画布（软件各界面 + 跳转关系曲线） ================= -->
+  <div id="left-panel" class="flex-1 min-w-0">
+    <div id="canvas-content">
+
+      <!-- 视图间跳转关系曲线层 -->
+      <svg id="flow-svg" style="position:absolute; left:0; top:0; width:2360px; height:1420px; pointer-events:none; z-index:5;">
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+            <path d="M0,0 L10,4 L0,8 Z" fill="#4FC3F7"/>
+          </marker>
+          <marker id="arrowhead-gray" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+            <path d="M0,0 L10,4 L0,8 Z" fill="#AFAFAF"/>
+          </marker>
+        </defs>
+
+        <!-- 主界面 → 原始报文 -->
+        <path d="M 1040 200 C 1130 190, 1190 185, 1258 180" fill="none" stroke="#4FC3F7" stroke-width="2.5" stroke-dasharray="7,5" marker-end="url(#arrowhead)"/>
+        <rect x="1085" y="150" width="150" height="26" rx="13" fill="#ffffff" stroke="#e5e5e5" stroke-width="2"/>
+        <text x="1160" y="167" fill="#4FC3F7" font-size="12" font-weight="700" text-anchor="middle" style="font-family:'Nunito',sans-serif;">点击页签「原始报文」</text>
+
+        <!-- 主界面 → 数据回放 -->
+        <path d="M 1040 420 C 1170 470, 1180 780, 1258 850" fill="none" stroke="#4FC3F7" stroke-width="2.5" stroke-dasharray="7,5" marker-end="url(#arrowhead)"/>
+        <rect x="1098" y="610" width="150" height="26" rx="13" fill="#ffffff" stroke="#e5e5e5" stroke-width="2"/>
+        <text x="1173" y="627" fill="#4FC3F7" font-size="12" font-weight="700" text-anchor="middle" style="font-family:'Nunito',sans-serif;">点击页签「数据回放」</text>
+
+        <!-- 数据回放 → 主界面（退出回放） -->
+        <path d="M 1258 1000 C 1150 900, 1100 640, 1042 540" fill="none" stroke="#AFAFAF" stroke-width="2" stroke-dasharray="3,4" marker-end="url(#arrowhead-gray)"/>
+        <rect x="1082" y="740" width="130" height="26" rx="13" fill="#ffffff" stroke="#e5e5e5" stroke-width="2"/>
+        <text x="1147" y="757" fill="#777777" font-size="12" font-weight="700" text-anchor="middle" style="font-family:'Nunito',sans-serif;">退出回放(互斥)</text>
+
+        <!-- 主界面 → 设置对话框 -->
+        <path d="M 400 648 C 385 730, 385 800, 400 858" fill="none" stroke="#4FC3F7" stroke-width="2.5" stroke-dasharray="7,5" marker-end="url(#arrowhead)"/>
+        <rect x="418" y="735" width="180" height="26" rx="13" fill="#ffffff" stroke="#e5e5e5" stroke-width="2"/>
+        <text x="508" y="752" fill="#4FC3F7" font-size="12" font-weight="700" text-anchor="middle" style="font-family:'Nunito',sans-serif;">点击「设置」按钮(模态弹出)</text>
+      </svg>
+
+      <!-- ========== 视图 1：实时监测主界面 (L1 主视图) ========== -->
+      <div class="view-label" style="left:60px; top:24px;"><span class="lv">L1 · 主视图</span>实时监测主界面</div>
+      <div id="win-monitor" class="app-window view-container" style="left:60px; top:60px;">
+        <div class="flex items-center justify-between px-3 py-1.5 select-none" style="background: linear-gradient(90deg,#1b1f2b,#20242f); border-bottom:1px solid #2a2f3d;">
+          <div class="flex items-center gap-2">
+            <div class="w-5 h-5 rounded flex items-center justify-center text-white font-bold" style="background: linear-gradient(135deg,#4F46E5,#818cf8); font-size:10px;">DM</div>
+            <span class="text-gray-300 text-xs">DM40Meter Studio — 实时监测</span>
+          </div>
+          <div class="flex items-center text-gray-500 text-xs">
+            <span class="px-3 py-1 hover:bg-gray-600/40 cursor-default">—</span>
+            <span class="px-3 py-1 hover:bg-gray-600/40 cursor-default">▢</span>
+            <span class="px-3 py-1 hover:bg-red-500 hover:text-white cursor-default">✕</span>
+          </div>
+        </div>
+        <div class="relative flex items-center gap-3 px-4 py-2.5" style="background:#191d29; border-bottom:1px solid #262b38;">
+          <select class="text-xs rounded-md px-2.5 py-1.5 text-gray-200 outline-none" style="background:#232838; border:1px solid #343b4e;">
+            <option>DM40-BT (DC:23:0D:12:34:56) · -58dBm</option>
+            <option>DM40-LAB (DC:23:0D:AA:BB:CC) · -71dBm</option>
+          </select>
+          <button class="text-xs px-3 py-1.5 rounded-md text-gray-300 btn-ctrl" style="background:#232838; border:1px solid #343b4e;">🔍 扫描设备</button>
+          <button id="btn-connect" onclick="toggleConnect()" class="text-xs px-4 py-1.5 rounded-md font-semibold text-white btn-ctrl" style="background: linear-gradient(135deg,#4F46E5,#6366f1); border:1px solid #6366f1;">⚡ 连接</button>
+          <span id="anno-1" data-target="card-1" class="anno-badge absolute flex items-center justify-center w-6 h-6 rounded-full bg-indigo-600 text-white text-xs cursor-pointer hover:scale-110 transition-transform" style="top:0px; left:322px;">1</span>
+          <span class="flex items-center gap-1.5 text-[11px] text-gray-400">
+            <span id="conn-dot" class="inline-block w-2 h-2 rounded-full" style="background:#6b7280;"></span><span id="conn-text">未连接</span>
+          </span>
+          <div class="flex-1"></div>
+          <button class="text-[11px] px-3 py-1.5 rounded-md text-gray-300 btn-ctrl" style="background:#232838; border:1px solid #343b4e;">🌗 跟随系统</button>
+          <button class="text-[11px] px-3 py-1.5 rounded-md text-gray-300 btn-ctrl" style="background:#232838; border:1px solid #343b4e;">⚙ 设置</button>
+        </div>
+        <div class="flex gap-3 p-3" style="background:#12151d;">
+          <div class="flex flex-col gap-3" style="width: 268px; flex-shrink:0;">
+            <div class="panel p-4">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-[11px] text-gray-400 tracking-widest">直流电压 · DCV</span>
+                <span class="badge text-[10px] px-1.5 py-0.5 text-indigo-300">AUTO</span>
+              </div>
+              <div class="digital-font reading-glow text-indigo-300 font-bold" style="font-size: 44px; line-height: 1.1;">3.2987</div>
+              <div class="text-right text-indigo-400 text-base font-semibold -mt-1">V ⎓</div>
+              <div class="flex gap-4 mt-2 pt-2 text-[11px] text-gray-400" style="border-top:1px dashed #2a2f3d;">
+                <span>副显1 <b class="text-gray-200 digital-font">3.2991 V</b></span>
+                <span>副显2 <b class="text-gray-200 digital-font">--</b></span>
+              </div>
+              <div class="flex items-center gap-2 mt-3 text-[10px]">
+                <span class="badge px-1.5 py-0.5 text-gray-300">🔋 4/5</span>
+                <span class="badge px-1.5 py-0.5 text-amber-300">HOLD</span>
+                <span class="badge px-1.5 py-0.5 text-gray-500">REL</span>
+                <span class="badge px-1.5 py-0.5 text-gray-500">🔒</span>
+              </div>
+            </div>
+            <div class="panel p-3">
+              <div class="text-[11px] text-gray-400 tracking-widest mb-2">设备控制</div>
+              <div class="grid grid-cols-4 gap-1.5 text-center text-[10px] text-gray-300">
+                <div class="btn-ctrl active rounded-md py-2" style="border:1px solid #343b4e; background:#232838;">保持<br><span class="text-gray-500">HOLD</span></div>
+                <div class="btn-ctrl rounded-md py-2" style="border:1px solid #343b4e; background:#232838;">自动量程<br><span class="text-gray-500">AUTO</span></div>
+                <div class="btn-ctrl rounded-md py-2" style="border:1px solid #343b4e; background:#232838;">相对值<br><span class="text-gray-500">REL</span></div>
+                <div class="btn-ctrl rounded-md py-2" style="border:1px solid #343b4e; background:#232838;">电容<br><span class="text-gray-500">CAP</span></div>
+                <div class="btn-ctrl rounded-md py-2" style="border:1px solid #343b4e; background:#232838;">二极管<br><span class="text-gray-500">DIODE</span></div>
+                <div class="btn-ctrl rounded-md py-2" style="border:1px solid #343b4e; background:#232838;">通断<br><span class="text-gray-500">CONT</span></div>
+                <div class="btn-ctrl rounded-md py-2" style="border:1px solid #343b4e; background:#232838;">频率<br><span class="text-gray-500">HZ</span></div>
+                <div class="btn-ctrl rounded-md py-2" style="border:1px solid #343b4e; background:#232838;">温度<br><span class="text-gray-500">TEMP</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="flex-1 panel p-3 flex flex-col min-w-0">
+            <div class="flex items-center gap-4 px-1 pb-2 text-xs" style="border-bottom:1px solid #262b38;">
+              <span class="app-tab active pb-1 font-semibold">📈 实时波形</span>
+              <span class="app-tab pb-1">🧾 原始报文</span>
+              <span class="app-tab pb-1">⏪ 数据回放</span>
+              <div class="flex-1"></div>
+              <span class="text-[10px] text-gray-500">窗口: 60s ▾</span>
+            </div>
+            <div id="waveform-box" class="relative rounded-lg overflow-hidden mt-3" style="background:#0b0e14; border:1px solid #232838; height: 300px;">
+              <svg width="100%" height="100%" viewBox="0 0 800 300" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="waveFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#6366f1" stop-opacity="0.35"/>
+                    <stop offset="100%" stop-color="#6366f1" stop-opacity="0"/>
+                  </linearGradient>
+                </defs>
+                <g stroke="#1f2431" stroke-width="1">
+                  <line x1="0" y1="60" x2="800" y2="60"/><line x1="0" y1="120" x2="800" y2="120"/>
+                  <line x1="0" y1="180" x2="800" y2="180"/><line x1="0" y1="240" x2="800" y2="240"/>
+                  <line x1="160" y1="0" x2="160" y2="300"/><line x1="320" y1="0" x2="320" y2="300"/>
+                  <line x1="480" y1="0" x2="480" y2="300"/><line x1="640" y1="0" x2="640" y2="300"/>
+                </g>
+                <line x1="0" y1="62" x2="800" y2="62" stroke="#ef4444" stroke-width="1" stroke-dasharray="6,4" opacity="0.7"/>
+                <text x="8" y="56" fill="#ef4444" font-size="11">上限 3.465V</text>
+                <line x1="0" y1="266" x2="800" y2="266" stroke="#f59e0b" stroke-width="1" stroke-dasharray="6,4" opacity="0.7"/>
+                <text x="8" y="282" fill="#f59e0b" font-size="11">下限 3.135V</text>
+                <path d="M0,160 C40,152 60,168 100,158 C140,148 170,176 210,162 C250,148 280,52 320,50 C360,48 380,150 420,158 C460,166 490,146 530,156 C570,166 600,154 640,160 C680,166 720,150 760,158 L800,156 L800,300 L0,300 Z" fill="url(#waveFill)"/>
+                <path class="wave-flow" d="M0,160 C40,152 60,168 100,158 C140,148 170,176 210,162 C250,148 280,52 320,50 C360,48 380,150 420,158 C460,166 490,146 530,156 C570,166 600,154 640,160 C680,166 720,150 760,158 L800,156" fill="none" stroke="#818cf8" stroke-width="2.5" stroke-dasharray="8,4"/>
+                <rect x="270" y="40" width="108" height="22" rx="5" fill="#7f1d1d" opacity="0.9"/>
+                <text x="278" y="55" fill="#fecaca" font-size="11">⚠ 越限区段 3.51V</text>
+                <circle cx="530" cy="156" r="5" fill="#fbbf24" stroke="#0b0e14" stroke-width="2"/>
+                <rect x="500" y="122" width="116" height="24" rx="5" fill="#232838" stroke="#4b5563"/>
+                <text x="508" y="138" fill="#e5e7eb" font-size="11">📌 11:02:31  3.2990V</text>
+              </svg>
+              <span id="anno-2" data-target="card-2" class="anno-badge absolute flex items-center justify-center w-6 h-6 rounded-full bg-indigo-600 text-white text-xs cursor-pointer hover:scale-110 transition-transform" style="top:8px; right:8px;">2</span>
+              <div class="absolute bottom-2 right-3 text-[10px] text-gray-500">左键钉点 · 拖框选 Min/Max/Δ · P 暂停</div>
+            </div>
+            <div class="flex gap-2 mt-2 text-[10px] text-gray-400">
+              <span class="badge px-2 py-1">选区 Min <b class="text-gray-100">3.2821</b></span>
+              <span class="badge px-2 py-1">Max <b class="text-red-300">3.5112</b></span>
+              <span class="badge px-2 py-1">Δ <b class="text-gray-100">0.2291 V</b></span>
+            </div>
+          </div>
+          <div class="flex flex-col gap-3" style="width: 218px; flex-shrink:0;">
+            <div class="panel p-3">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-[11px] text-gray-400 tracking-widest">测量统计</span>
+                <button class="btn-ctrl text-[10px] px-2 py-0.5 rounded text-gray-400" style="border:1px solid #343b4e; background:#232838;">清零</button>
+              </div>
+              <div class="grid grid-cols-2 gap-2 text-center">
+                <div class="rounded-md py-1.5" style="background:#12151d; border:1px solid #232838;"><div class="text-[10px] text-gray-500">最小值</div><div class="digital-font text-emerald-300 text-sm">3.2821</div></div>
+                <div class="rounded-md py-1.5" style="background:#12151d; border:1px solid #232838;"><div class="text-[10px] text-gray-500">最大值</div><div class="digital-font text-red-300 text-sm">3.5112</div></div>
+                <div class="rounded-md py-1.5" style="background:#12151d; border:1px solid #232838;"><div class="text-[10px] text-gray-500">平均值</div><div class="digital-font text-gray-100 text-sm">3.2988</div></div>
+                <div class="rounded-md py-1.5" style="background:#12151d; border:1px solid #232838;"><div class="text-[10px] text-gray-500">Δ 峰峰</div><div class="digital-font text-amber-300 text-sm">0.2291</div></div>
+              </div>
+              <div class="text-[10px] text-gray-500 mt-2 text-center">样本 14,203 · 时长 00:59:12</div>
+            </div>
+            <div id="alarm-card" class="panel p-3 relative">
+              <span id="anno-3" data-target="card-3" class="anno-badge absolute flex items-center justify-center w-6 h-6 rounded-full bg-indigo-600 text-white text-xs cursor-pointer hover:scale-110 transition-transform" style="top:-10px; right:-8px;">3</span>
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-[11px] text-gray-400 tracking-widest">阈值报警</span>
+                <span class="text-[10px] px-2 py-0.5 rounded-full text-white" style="background:#4F46E5;">已启用</span>
+              </div>
+              <div class="flex flex-col gap-1.5 text-[11px] text-gray-300">
+                <label class="flex items-center justify-between">上限 <input value="3.465" class="w-20 text-right digital-font text-gray-100 rounded px-1 py-0.5 outline-none" style="background:#12151d; border:1px solid #343b4e;"> V</label>
+                <label class="flex items-center justify-between">下限 <input value="3.135" class="w-20 text-right digital-font text-gray-100 rounded px-1 py-0.5 outline-none" style="background:#12151d; border:1px solid #343b4e;"> V</label>
+                <div class="flex gap-3 mt-0.5">
+                  <label class="flex items-center gap-1"><input type="checkbox" checked> 🔊 声音</label>
+                  <label class="flex items-center gap-1"><input type="checkbox" checked> 🪟 弹窗</label>
+                </div>
+              </div>
+              <div class="mt-2 pt-2 text-[10px]" style="border-top:1px dashed #2a2f3d;">
+                <div class="text-gray-500 mb-1">报警事件 (最近)</div>
+                <div class="text-red-300 digital-font">11:01:58 HIGH 3.5112V</div>
+                <div class="text-gray-500 digital-font">10:47:12 HIGH 3.4701V</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="relative flex items-center gap-4 px-4 py-1.5 text-[11px] text-gray-400" style="background:#191d29; border-top:1px solid #262b38;">
+          <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>已连接 · DM40-BT</span>
+          <span>帧率 4.1 Hz</span>
+          <span>延迟 86 ms</span>
+          <div class="flex-1"></div>
+          <span id="rec-indicator" class="hidden items-center gap-1.5 text-red-300"><span class="rec-dot w-2.5 h-2.5 rounded-full bg-red-500 inline-block"></span>REC 00:04:37 · 1,108 样本</span>
+          <button id="btn-export" class="btn-ctrl px-3 py-1 rounded-md text-gray-200" style="background:#232838; border:1px solid #343b4e;">💾 导出 CSV (Ctrl+S)</button>
+          <button id="btn-record" onclick="toggleRecord()" class="btn-ctrl px-3 py-1 rounded-md font-semibold text-white" style="background:#b91c1c; border:1px solid #ef4444;">⏺ 开始录制 (R)</button>
+          <span id="anno-4" data-target="card-4" class="anno-badge absolute flex items-center justify-center w-6 h-6 rounded-full bg-indigo-600 text-white text-xs cursor-pointer hover:scale-110 transition-transform" style="top:-11px; right:150px;">4</span>
+        </div>
+      </div>
+
+      <!-- ========== 视图 2：原始报文页签 (L2) ========== -->
+      <div class="view-label" style="left:1260px; top:6px;"><span class="lv">L2 · 页签视图</span>原始报文页签</div>
+      <div id="win-raw" class="app-window view-container" style="left:1260px; top:40px;">
+        <div class="flex items-center justify-between px-3 py-1.5 select-none" style="background: linear-gradient(90deg,#1b1f2b,#20242f); border-bottom:1px solid #2a2f3d;">
+          <div class="flex items-center gap-2">
+            <div class="w-5 h-5 rounded flex items-center justify-center text-white font-bold" style="background: linear-gradient(135deg,#4F46E5,#818cf8); font-size:10px;">DM</div>
+            <span class="text-gray-300 text-xs">DM40Meter Studio — 原始报文</span>
+          </div>
+          <div class="flex items-center text-gray-500 text-xs">
+            <span class="px-3 py-1">—</span><span class="px-3 py-1">▢</span><span class="px-3 py-1">✕</span>
+          </div>
+        </div>
+        <div class="flex items-center gap-3 px-4 py-2.5" style="background:#191d29; border-bottom:1px solid #262b38;">
+          <span class="flex items-center gap-1.5 text-[11px] text-gray-400"><span class="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>已连接 · DM40-BT</span>
+          <div class="flex-1"></div>
+          <button class="text-[11px] px-3 py-1.5 rounded-md text-gray-300 btn-ctrl" style="background:#232838; border:1px solid #343b4e;">🌗 跟随系统</button>
+          <button class="text-[11px] px-3 py-1.5 rounded-md text-gray-300 btn-ctrl" style="background:#232838; border:1px solid #343b4e;">⚙ 设置</button>
+        </div>
+        <div class="p-3" style="background:#12151d;">
+          <div class="panel p-3">
+            <div class="flex items-center gap-4 px-1 pb-2 text-xs" style="border-bottom:1px solid #262b38;">
+              <span class="app-tab pb-1">📈 实时波形</span>
+              <span class="app-tab active pb-1 font-semibold">🧾 原始报文</span>
+              <span class="app-tab pb-1">⏪ 数据回放</span>
+              <div class="flex-1"></div>
+              <input placeholder="Ctrl+F 查找 HEX…" class="text-[11px] rounded-md px-3 py-1 text-gray-200 outline-none w-40" style="background:#232838; border:1px solid #343b4e;">
+              <button class="btn-ctrl text-[11px] px-2.5 py-1 rounded-md text-gray-300" style="background:#232838; border:1px solid #343b4e;">⏸ 暂停滚动</button>
+              <button class="btn-ctrl text-[11px] px-2.5 py-1 rounded-md text-gray-300" style="background:#232838; border:1px solid #343b4e;">🗑 清空</button>
+            </div>
+            <div class="relative rounded-lg p-2 mt-3 text-[10px] digital-font" style="background:#0b0e14; border:1px solid #232838;">
+              <span id="anno-5" data-target="card-5" class="anno-badge absolute flex items-center justify-center w-6 h-6 rounded-full bg-indigo-600 text-white text-xs cursor-pointer hover:scale-110 transition-transform" style="top:10px; right:10px;">5</span>
+              <table class="mono-table w-full text-left">
+                <tr class="text-gray-500"><th>时间</th><th>方向</th><th>HEX</th><th>CRC</th></tr>
+                <tr class="text-gray-300"><td>11:02:31.204</td><td class="text-emerald-400">RX</td><td>df 05 03 09 20 11 00 4c 1f 00 00 00 d3 80 92 7f 33 03 03 00 8e</td><td class="text-emerald-400">✓ 通过</td></tr>
+                <tr class="text-gray-300"><td>11:02:31.012</td><td class="text-sky-400">TX</td><td>af 05 03 04 01 01</td><td class="text-emerald-400">✓ 通过</td></tr>
+                <tr class="text-gray-300"><td>11:02:30.955</td><td class="text-emerald-400">RX</td><td>df 05 03 09 20 11 00 4a 1f 00 00 00 d3 80 92 7f 33 03 03 00 90</td><td class="text-emerald-400">✓ 通过</td></tr>
+                <tr class="text-gray-500"><td>11:02:30.706</td><td class="text-emerald-400">RX</td><td>df 05 03 09 20 11 00 4b 1f 00 00 00 d3 80 92 7f 33 03 03 00 ff</td><td class="text-red-400">✗ 失败</td></tr>
+                <tr class="text-gray-300"><td>11:02:30.457</td><td class="text-emerald-400">RX</td><td>df 05 03 09 20 11 00 4c 1f 00 00 00 d3 80 92 7f 33 03 03 00 8e</td><td class="text-emerald-400">✓ 通过</td></tr>
+                <tr class="text-gray-300"><td>11:02:30.208</td><td class="text-sky-400">TX</td><td>af 05 03 06 01 03</td><td class="text-emerald-400">✓ 通过</td></tr>
+              </table>
+              <div class="text-gray-600 mt-2 text-[10px]" style="font-family:'Microsoft YaHei',sans-serif;">缓冲上限 10000 帧循环覆盖 · Enter 下一个 / Shift+Enter 上一个 / Esc 关闭查找</div>
+            </div>
+          </div>
+        </div>
+        <div class="flex items-center gap-4 px-4 py-1.5 text-[11px] text-gray-400" style="background:#191d29; border-top:1px solid #262b38;">
+          <span>帧率 4.1 Hz</span><span>已缓存 3,214 帧</span>
+          <div class="flex-1"></div>
+          <span>CRC 失败 2 帧</span>
+        </div>
+      </div>
+
+      <!-- ========== 视图 3：数据回放页签 (L2) ========== -->
+      <div class="view-label" style="left:1260px; top:686px;"><span class="lv">L2 · 页签视图</span>数据回放页签</div>
+      <div id="win-replay" class="app-window view-container" style="left:1260px; top:720px;">
+        <div class="flex items-center justify-between px-3 py-1.5 select-none" style="background: linear-gradient(90deg,#1b1f2b,#20242f); border-bottom:1px solid #2a2f3d;">
+          <div class="flex items-center gap-2">
+            <div class="w-5 h-5 rounded flex items-center justify-center text-white font-bold" style="background: linear-gradient(135deg,#4F46E5,#818cf8); font-size:10px;">DM</div>
+            <span class="text-gray-300 text-xs">DM40Meter Studio — 数据回放</span>
+          </div>
+          <div class="flex items-center text-gray-500 text-xs">
+            <span class="px-3 py-1">—</span><span class="px-3 py-1">▢</span><span class="px-3 py-1">✕</span>
+          </div>
+        </div>
+        <div class="flex items-center gap-3 px-4 py-2.5" style="background:#191d29; border-bottom:1px solid #262b38;">
+          <span class="flex items-center gap-1.5 text-[11px] text-gray-500"><span class="w-2 h-2 rounded-full bg-gray-500 inline-block"></span>回放模式（实时采集已暂停）</span>
+          <div class="flex-1"></div>
+          <button class="btn-ctrl text-[11px] px-3 py-1.5 rounded-md text-gray-200" style="background:#232838; border:1px solid #343b4e;">📂 打开 CSV</button>
+          <button class="btn-ctrl text-[11px] px-3 py-1.5 rounded-md text-gray-300" style="background:#232838; border:1px solid #343b4e;">退出回放</button>
+        </div>
+        <div class="p-3" style="background:#12151d;">
+          <div class="panel p-3">
+            <div class="flex items-center gap-4 px-1 pb-2 text-xs" style="border-bottom:1px solid #262b38;">
+              <span class="app-tab pb-1">📈 实时波形</span>
+              <span class="app-tab pb-1">🧾 原始报文</span>
+              <span class="app-tab active pb-1 font-semibold">⏪ 数据回放</span>
+              <div class="flex-1"></div>
+              <span class="text-[10px] text-gray-500">DM40_20260717_093012.csv (142,880 行)</span>
+            </div>
+            <div class="relative rounded-lg p-4 mt-3" style="background:#0b0e14; border:1px solid #232838;">
+              <span id="anno-6" data-target="card-6" class="anno-badge absolute flex items-center justify-center w-6 h-6 rounded-full bg-indigo-600 text-white text-xs cursor-pointer hover:scale-110 transition-transform" style="top:10px; right:10px;">6</span>
+              <div class="flex items-end gap-5 mb-4">
+                <div class="digital-font reading-glow text-indigo-300 font-bold" style="font-size: 40px;">3.4210</div>
+                <div class="text-indigo-400 text-base font-semibold pb-1.5">V ⎓</div>
+                <div class="text-[11px] text-gray-500 pb-2">回放时刻读数 · 波形与统计同步联动<br>设备控制条与录制按钮已禁用</div>
+              </div>
+              <div class="flex items-center gap-2.5 mb-3">
+                <button class="btn-ctrl text-xs px-4 py-1.5 rounded-md text-white" style="background:#4F46E5; border:1px solid #6366f1;">▶ 播放</button>
+                <button class="btn-ctrl text-[11px] px-2 py-1.5 rounded-md text-gray-300" style="background:#232838; border:1px solid #343b4e;">0.5x</button>
+                <button class="btn-ctrl text-[11px] px-2 py-1.5 rounded-md text-white" style="background:#4F46E5; border:1px solid #6366f1;">1x</button>
+                <button class="btn-ctrl text-[11px] px-2 py-1.5 rounded-md text-gray-300" style="background:#232838; border:1px solid #343b4e;">2x</button>
+                <button class="btn-ctrl text-[11px] px-2 py-1.5 rounded-md text-gray-300" style="background:#232838; border:1px solid #343b4e;">4x</button>
+                <button class="btn-ctrl text-[11px] px-2 py-1.5 rounded-md text-gray-300" style="background:#232838; border:1px solid #343b4e;">10x</button>
+              </div>
+              <div class="w-full h-2 rounded-full relative" style="background:#232838;">
+                <div class="h-2 rounded-full" style="width: 37%; background: linear-gradient(90deg,#4F46E5,#818cf8);"></div>
+                <div class="absolute w-4 h-4 rounded-full bg-indigo-300" style="left: 37%; top: -4px; box-shadow:0 0 8px rgba(129,140,248,.8);"></div>
+              </div>
+              <div class="flex justify-between text-[10px] text-gray-500 mt-2"><span>00:00:00</span><span class="text-gray-300 digital-font">00:36:57 / 01:39:12</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="flex items-center gap-4 px-4 py-1.5 text-[11px] text-gray-400" style="background:#191d29; border-top:1px solid #262b38;">
+          <span>回放速度 1x</span>
+          <div class="flex-1"></div>
+          <span>文件超过 100 万行时仅加载前 100 万行</span>
+        </div>
+      </div>
+
+      <!-- ========== 视图 4：设置对话框 (L2 模态) ========== -->
+      <div class="view-label" style="left:120px; top:826px;"><span class="lv">L2 · 模态对话框</span>设置对话框</div>
+      <div id="win-settings" class="app-window view-container" style="left:120px; top:860px;">
+        <div class="flex items-center justify-between px-3 py-1.5 select-none" style="background: linear-gradient(90deg,#1b1f2b,#20242f); border-bottom:1px solid #2a2f3d;">
+          <div class="flex items-center gap-2">
+            <div class="w-5 h-5 rounded flex items-center justify-center text-white font-bold" style="background: linear-gradient(135deg,#4F46E5,#818cf8); font-size:10px;">DM</div>
+            <span class="text-gray-300 text-xs">DM40Meter Studio</span>
+          </div>
+          <div class="flex items-center text-gray-500 text-xs">
+            <span class="px-3 py-1">—</span><span class="px-3 py-1">▢</span><span class="px-3 py-1">✕</span>
+          </div>
+        </div>
+        <div class="p-3 relative" style="background:#12151d;">
+          <div class="panel p-4" style="height: 240px; filter: blur(1px) brightness(.55);"></div>
+          <div class="absolute inset-0 flex items-center justify-center" style="background: rgba(5,7,12,.4);">
+            <div class="rounded-lg overflow-hidden" style="width: 440px; background:#1a1d27; border:1px solid #3a4152; box-shadow: 0 20px 60px rgba(0,0,0,.8);">
+              <div class="flex items-center justify-between px-4 py-2.5" style="background:#20242f; border-bottom:1px solid #2a2f3d;">
+                <span class="text-gray-200 text-xs font-semibold">⚙ 设置</span>
+                <span class="text-gray-500 text-xs hover:text-red-400 cursor-pointer">✕</span>
+              </div>
+              <div class="p-4">
+                <div class="text-[11px] text-gray-400 tracking-widest mb-2">外观主题</div>
+                <div class="flex gap-2 text-[11px] mb-3">
+                  <button class="btn-ctrl active px-3 py-1.5 rounded-md text-gray-200" style="background:#232838; border:1px solid #343b4e;">跟随系统</button>
+                  <button class="btn-ctrl px-3 py-1.5 rounded-md text-gray-200" style="background:#232838; border:1px solid #343b4e;">深色</button>
+                  <button class="btn-ctrl px-3 py-1.5 rounded-md text-gray-200" style="background:#232838; border:1px solid #343b4e;">浅色</button>
+                </div>
+                <div class="text-[11px] text-gray-400 tracking-widest mb-2">波形时间窗口</div>
+                <div class="flex gap-2 text-[11px] mb-3">
+                  <button class="btn-ctrl px-3 py-1.5 rounded-md text-gray-200" style="background:#232838; border:1px solid #343b4e;">30s</button>
+                  <button class="btn-ctrl active px-3 py-1.5 rounded-md text-gray-200" style="background:#232838; border:1px solid #343b4e;">60s</button>
+                  <button class="btn-ctrl px-3 py-1.5 rounded-md text-gray-200" style="background:#232838; border:1px solid #343b4e;">5min</button>
+                  <button class="btn-ctrl px-3 py-1.5 rounded-md text-gray-200" style="background:#232838; border:1px solid #343b4e;">10min</button>
+                </div>
+                <div class="text-[11px] text-gray-400 tracking-widest mb-2">全局快捷键</div>
+                <div class="flex gap-4 text-[11px] text-gray-300">
+                  <span><span class="badge px-1.5 py-0.5 digital-font">P</span> 暂停波形</span>
+                  <span><span class="badge px-1.5 py-0.5 digital-font">R</span> 录制</span>
+                  <span><span class="badge px-1.5 py-0.5 digital-font">Ctrl+S</span> 导出</span>
+                  <span><span class="badge px-1.5 py-0.5 digital-font">Ctrl+C</span> 复制读数</span>
+                </div>
+                <div class="flex justify-end gap-2 mt-4">
+                  <button class="btn-ctrl text-[11px] px-4 py-1.5 rounded-md text-gray-300" style="background:#232838; border:1px solid #343b4e;">取消</button>
+                  <button class="btn-ctrl text-[11px] px-4 py-1.5 rounded-md text-white" style="background:#4F46E5; border:1px solid #6366f1;">保存</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ================= 中央分割线 ================= -->
+  <div class="divider-v"></div>
+
+  <!-- ================= 最右侧需求说明栏（Duolingo 风格批注卡片） ================= -->
+  <div id="right-panel" class="scrollable-container" style="width: 265px; flex-shrink:0; background: #fafafa; border-left: 2px solid #e5e5e5;">
+    <div class="p-4 flex flex-col gap-3.5">
+
+      <!-- 批注栏头 -->
+      <div class="flex items-center gap-2.5 pb-3" style="border-bottom:2px solid #e5e5e5;">
+        <div class="duo-logo-box sm">📌</div>
+        <div>
+          <div class="feather-font" style="font-size: 17px; color: rgb(79,195,247); line-height: 1.1;">annotations</div>
+          <div style="font-size: 10px; font-weight: 700; color: rgb(175,175,175); letter-spacing: 1.5px;">PRD 原型批注</div>
+        </div>
+      </div>
+
+      <div id="card-1" data-target="anno-1" class="desc-card duo-desc-card p-4 text-xs leading-relaxed" style="color: var(--gray-light);">
+        <span class="fr-pill">FR-001 / FR-002</span>
+        <h4 class="text-sm mb-1">① 设备扫描与连接</h4>
+        BLE 扫描（10s 超时）→ CMD_ID 型号校验 → 订阅 fff1 通知。意外断开自动重连 3 次（2s/5s/10s 退避），记住上次设备支持一键重连。
+      </div>
+
+      <div id="card-2" data-target="anno-2" class="desc-card duo-desc-card p-4 text-xs leading-relaxed" style="color: var(--gray-light);">
+        <span class="fr-pill">FR-005</span>
+        <h4 class="text-sm mb-1">② 实时波形</h4>
+        ScottPlot 滚动波形：P 暂停、单击钉点、拖框选区间显示 Min/Max/Δ、右键清除。越限区段红色高亮，与阈值报警联动。
+      </div>
+
+      <div id="card-3" data-target="anno-3" class="desc-card duo-desc-card p-4 text-xs leading-relaxed" style="color: var(--gray-light);">
+        <span class="fr-pill">FR-007</span>
+        <h4 class="text-sm mb-1">③ 阈值报警</h4>
+        上下限可配，0.5s 滞回防抖动；越限触发声音 + 右下角 Toast + 读数红框脉冲；事件保留最近 100 条并写日志。
+      </div>
+
+      <div id="card-4" data-target="anno-4" class="desc-card duo-desc-card p-4 text-xs leading-relaxed" style="color: var(--gray-light);">
+        <span class="fr-pill">FR-008 / FR-009</span>
+        <h4 class="text-sm mb-1">④ 录制与导出</h4>
+        R 键连续录制（红点呼吸 + 计时 + 样本计数），Ctrl+S 导出当前缓冲。UTF-8 BOM 编码，Excel 直开不乱码；每秒 flush 落盘。
+      </div>
+
+      <div id="card-5" data-target="anno-5" class="desc-card duo-desc-card p-4 text-xs leading-relaxed" style="color: var(--gray-light);">
+        <span class="fr-pill">FR-011</span>
+        <h4 class="text-sm mb-1">⑤ 原始报文查看器</h4>
+        RX/TX 帧 HEX 显示 + CRC 通过/失败内联标签；Ctrl+F 查找、Enter/F3 导航；缓冲 10000 帧循环覆盖，支撑协议排障与未知帧上报。
+      </div>
+
+      <div id="card-6" data-target="anno-6" class="desc-card duo-desc-card p-4 text-xs leading-relaxed" style="color: var(--gray-light);">
+        <span class="fr-pill">FR-010</span>
+        <h4 class="text-sm mb-1">⑥ 数据回放</h4>
+        打开本软件录制的 CSV，支持播放/暂停、进度拖动、0.5x~10x 倍速；读数/波形/统计联动刷新；与实时模式互斥，回放中禁用设备控制。
+      </div>
+
+      <div class="duo-desc-card p-4 text-xs leading-relaxed" style="color: var(--gray-light);">
+        <span class="fr-pill" style="background: rgba(79,195,247,.12); color: var(--green-hover);">🗺 画布说明</span>
+        <h4 class="text-sm mb-1">页面流程画布</h4>
+        L1 主视图居中偏左，L2 页签视图在右，模态对话框在下方；带箭头虚线表示跳转关系（<b style="color: var(--blue);">蓝色 = 正向进入</b>，<b style="color: var(--nav-text);">灰色 = 退出返回</b>）。
+      </div>
+
+      <div style="height: 30px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 画布缩放控件 -->
+<div class="zoom-controls">
+  <button onclick="setZoom(zoom-0.1)" title="缩小">−</button>
+  <span id="zoom-label" class="text-xs text-gray-300" style="min-width:42px; text-align:center;">100%</span>
+  <button onclick="setZoom(zoom+0.1)" title="放大">＋</button>
+  <button onclick="setZoom(1)" title="重置" class="text-xs px-1" style="width:auto;">1:1</button>
+</div>
+
+<!-- ================= SVG 全屏画布层（标注点连线） ================= -->
+<svg id="svg-canvas" class="fixed top-0 left-0 w-full h-full pointer-events-none z-[9999]" style="position:fixed; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:9999;"></svg>
+
+<script>
+// 1. 视图定位逻辑 (画布模式：滚动定位 + 高亮闪烁，替代整页隐藏切换)
+function switchView(viewId) {
+    const targetView = document.getElementById(viewId);
+    if (targetView) {
+        targetView.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+        targetView.classList.add('flash');
+        setTimeout(() => targetView.classList.remove('flash'), 1600);
+    }
+
+    // 切换导航高亮（Duolingo 风格选中态由 .nav-active 驱动）
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('nav-active'));
+    const activeNav = document.querySelector(`[data-view="${viewId}"]`);
+    if (activeNav) activeNav.classList.add('nav-active');
+
+    // 定位后延迟重绘连线
+    setTimeout(drawLines, 50);
+    setTimeout(drawLines, 500); // smooth scroll 结束后再校准一次
+}
+
+// 2. 双向高亮联动与 SVG 连线配置
+const activeConnections = [
+    { fromId: 'anno-1', toId: 'card-1' },
+    { fromId: 'anno-2', toId: 'card-2' },
+    { fromId: 'anno-3', toId: 'card-3' },
+    { fromId: 'anno-4', toId: 'card-4' },
+    { fromId: 'anno-5', toId: 'card-5' },
+    { fromId: 'anno-6', toId: 'card-6' }
+];
+
+function drawLines() {
+    const svg = document.getElementById('svg-canvas');
+    if (!svg) return;
+    svg.innerHTML = ''; // 清空画布
+
+    activeConnections.forEach(conn => {
+        const fromEl = document.getElementById(conn.fromId);
+        const toEl = document.getElementById(conn.toId);
+
+        // 只有当起始和结束元素在当前视图中都是可见的，才进行绘制
+        if (!fromEl || !toEl || fromEl.getBoundingClientRect().width === 0 || toEl.getBoundingClientRect().width === 0) {
+            return;
+        }
+
+        const r1 = fromEl.getBoundingClientRect();
+        const r2 = toEl.getBoundingClientRect();
+
+        // 计算精确的边缘中点
+        const startX = r1.right;
+        const startY = r1.top + r1.height / 2;
+        const endX = r2.left;
+        const endY = r2.top + r2.height / 2;
+
+        // 贝塞尔曲线控制点计算
+        const controlOffsetX = Math.abs(endX - startX) * 0.4;
+        const cp1x = startX + controlOffsetX;
+        const cp1y = startY;
+        const cp2x = endX - controlOffsetX;
+        const cp2y = endY;
+
+        const pathData = `M ${startX} ${startY} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${endX} ${endY}`;
+
+        // 创建 SVG 曲线
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", pathData);
+        path.setAttribute("stroke", "#4F46E5"); // Indigo-600
+        path.setAttribute("stroke-width", "2");
+        path.setAttribute("fill", "none");
+        path.setAttribute("stroke-dasharray", "4,4");
+        path.setAttribute("opacity", "0.6");
+        path.setAttribute("id", `line-${conn.fromId}`);
+        path.style.transition = "stroke 0.2s, stroke-width 0.2s, opacity 0.2s";
+
+        // 创建起始端点圆圈
+        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        circle.setAttribute("cx", startX);
+        circle.setAttribute("cy", startY);
+        circle.setAttribute("r", "4");
+        circle.setAttribute("fill", "#4F46E5");
+
+        svg.appendChild(path);
+        svg.appendChild(circle);
+    });
+}
+
+// 3. 悬停/点击双向高亮与连线强化
+function setupInteractions() {
+    activeConnections.forEach(conn => {
+        const fromEl = document.getElementById(conn.fromId);
+        const toEl = document.getElementById(conn.toId);
+        if (!fromEl || !toEl) return;
+
+        const handleEnter = () => {
+            // 高亮左侧标注
+            fromEl.classList.remove('bg-indigo-600');
+            fromEl.classList.add('bg-red-500', 'scale-110');
+            // 高亮右侧卡片
+            toEl.classList.add('bg-red-50', 'border-red-300', 'ring-2', 'ring-red-200');
+            // 强化连线
+            const line = document.getElementById(`line-${conn.fromId}`);
+            if (line) {
+                line.setAttribute("stroke", "#EF4444"); // Red-500
+                line.setAttribute("stroke-width", "3");
+                line.setAttribute("opacity", "1.0");
+                line.removeAttribute("stroke-dasharray"); // 变实线
+            }
+        };
+
+        const handleLeave = () => {
+            // 恢复左侧标注
+            fromEl.classList.remove('bg-red-500', 'scale-110');
+            fromEl.classList.add('bg-indigo-600');
+            // 恢复右侧卡片
+            toEl.classList.remove('bg-red-50', 'border-red-300', 'ring-2', 'ring-red-200');
+            // 恢复连线
+            const line = document.getElementById(`line-${conn.fromId}`);
+            if (line) {
+                line.setAttribute("stroke", "#4F46E5");
+                line.setAttribute("stroke-width", "2");
+                line.setAttribute("opacity", "0.6");
+                line.setAttribute("stroke-dasharray", "4,4");
+            }
+        };
+
+        fromEl.addEventListener('mouseenter', handleEnter);
+        fromEl.addEventListener('mouseleave', handleLeave);
+        toEl.addEventListener('mouseenter', handleEnter);
+        toEl.addEventListener('mouseleave', handleLeave);
+    });
+}
+
+// 4. 全局事件绑定（防错位、防漂移核心）
+window.addEventListener('resize', drawLines);
+
+// 监听所有可滚动容器
+document.querySelectorAll('.scrollable-container').forEach(container => {
+    container.addEventListener('scroll', drawLines);
+});
+document.getElementById('left-panel').addEventListener('scroll', drawLines);
+
+// 5. 初始化
+document.addEventListener("DOMContentLoaded", () => {
+    setupInteractions();
+    setTimeout(drawLines, 100);
+});
+
+/* ---------- 无限画布：平移与缩放 ---------- */
+let zoom = 1;
+function setZoom(z) {
+    zoom = Math.min(1.6, Math.max(0.35, z));
+    document.getElementById('canvas-content').style.transform = `scale(${zoom})`;
+    document.getElementById('zoom-label').textContent = Math.round(zoom * 100) + '%';
+    setTimeout(drawLines, 50);
+}
+
+const leftPanel = document.getElementById('left-panel');
+
+// Ctrl + 滚轮缩放
+leftPanel.addEventListener('wheel', (e) => {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    setZoom(zoom + (e.deltaY < 0 ? 0.1 : -0.1));
+}, { passive: false });
+
+// 空白处拖拽平移
+let panning = false, panStartX = 0, panStartY = 0, panScrollL = 0, panScrollT = 0;
+leftPanel.addEventListener('mousedown', (e) => {
+    if (e.target.closest('.app-window') || e.target.closest('.zoom-controls')) return;
+    panning = true;
+    panStartX = e.clientX; panStartY = e.clientY;
+    panScrollL = leftPanel.scrollLeft; panScrollT = leftPanel.scrollTop;
+    leftPanel.classList.add('panning');
+});
+window.addEventListener('mousemove', (e) => {
+    if (!panning) return;
+    leftPanel.scrollLeft = panScrollL - (e.clientX - panStartX);
+    leftPanel.scrollTop = panScrollT - (e.clientY - panStartY);
+});
+window.addEventListener('mouseup', () => {
+    panning = false;
+    leftPanel.classList.remove('panning');
+});
+
+/* ---------- 原型演示交互（非规范必需） ---------- */
+let connected = false;
+function toggleConnect() {
+    connected = !connected;
+    document.getElementById('btn-connect').innerHTML = connected ? '断开' : '⚡ 连接';
+    document.getElementById('conn-dot').style.background = connected ? '#34d399' : '#6b7280';
+    document.getElementById('conn-text').textContent = connected ? '已连接 · 测量中' : '未连接';
+    setTimeout(drawLines, 50);
+}
+
+let recording = false;
+function toggleRecord() {
+    recording = !recording;
+    const btn = document.getElementById('btn-record');
+    const ind = document.getElementById('rec-indicator');
+    btn.innerHTML = recording ? '⏹ 停止录制 (R)' : '⏺ 开始录制 (R)';
+    btn.style.background = recording ? '#374151' : '#b91c1c';
+    ind.classList.toggle('hidden', !recording);
+    ind.classList.toggle('flex', recording);
+    setTimeout(drawLines, 50);
+}
+</script>
+</body>
+</html>

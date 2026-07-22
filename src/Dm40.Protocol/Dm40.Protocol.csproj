@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>8.0</LangVersion>
+    <AssemblyName>Dm40.Protocol</AssemblyName>
+    <RootNamespace>Dm40.Protocol</RootNamespace>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <!-- 纯函数解析库：不依赖 UI / BLE / IO，可完全离线单测 -->
+  </PropertyGroup>
+
+</Project>

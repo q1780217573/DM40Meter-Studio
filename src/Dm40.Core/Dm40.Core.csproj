@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>8.0</LangVersion>
+    <AssemblyName>Dm40.Core</AssemblyName>
+    <RootNamespace>Dm40.Core</RootNamespace>
+    <!-- 核心层：状态机/统计/报警/录制/回放。不依赖 UI 与 BLE，文件 IO 经抽象注入以便单测。 -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Dm40.Protocol\Dm40.Protocol.csproj" />
+  </ItemGroup>
+
+</Project>

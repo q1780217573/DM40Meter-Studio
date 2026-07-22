@@ -1,0 +1,391 @@
+<Window x:Class="Dm40.App.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="DM40Meter Studio" Width="1320" Height="820" MinWidth="1120" MinHeight="700"
+        Background="{StaticResource BgBrush}"
+        Foreground="{StaticResource FgBrush}"
+        FontFamily="Microsoft YaHei"
+        WindowStyle="None" AllowsTransparency="True"
+        WindowStartupLocation="CenterScreen">
+    <Window.Resources>
+        <!-- 大读数辉光（reading-glow：靛蓝投影） -->
+        <DropShadowEffect x:Key="ReadingGlow" Color="#6366F1" BlurRadius="22" ShadowDepth="0" Opacity="0.55" RenderingBias="Quality"/>
+    </Window.Resources>
+
+    <Border CornerRadius="8" BorderBrush="#3A4152" BorderThickness="1" Background="{StaticResource BgBrush}">
+    <Grid x:Name="MainRoot">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>   <!-- 0 自定义标题栏 -->
+            <RowDefinition Height="Auto"/>   <!-- 1 设备工具条 -->
+            <RowDefinition Height="*"/>      <!-- 2 三栏内容 -->
+            <RowDefinition Height="Auto"/>   <!-- 3 状态栏 -->
+        </Grid.RowDefinitions>
+
+        <!-- ======== 0 自定义标题栏 ======== -->
+        <Border Grid.Row="0" Background="{StaticResource TitleGradient}" BorderBrush="{StaticResource BorderBrushColor}"
+                BorderThickness="0,0,0,1" Padding="10,5" MouseLeftButtonDown="TitleBarDrag">
+            <DockPanel>
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+                    <Border Width="20" Height="20" CornerRadius="4" Background="{StaticResource AccentGradient}" VerticalAlignment="Center">
+                        <TextBlock Text="DM" Foreground="White" FontWeight="Bold" FontSize="11.5"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Text="DM40Meter Studio — 实时监测" Foreground="#D1D5DB" FontSize="13"
+                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <TextBlock Text="—" Padding="12,2" Foreground="{StaticResource FgFaintBrush}" Cursor="Hand" MouseLeftButtonDown="OnMinimize"/>
+                    <TextBlock Text="▢" Padding="12,2" Foreground="{StaticResource FgFaintBrush}" Cursor="Hand" MouseLeftButtonDown="OnMaximize"/>
+                    <TextBlock Text="✕" Padding="12,2" Foreground="{StaticResource FgFaintBrush}" Cursor="Hand" MouseLeftButtonDown="OnClose"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- ======== 1 设备工具条 ======== -->
+        <Border Grid.Row="1" Background="#191D29" BorderBrush="#262B38" BorderThickness="0,0,0,1" Padding="14,8">
+            <DockPanel>
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                    <ComboBox x:Name="DeviceCombo" Width="300" Margin="0,0,8,0" VerticalAlignment="Center"
+                              Style="{StaticResource DarkCombo}"
+                              ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}"
+                              FontSize="13">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding DisplayName}" Foreground="{StaticResource AccentTextBrush}"/>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <Button Style="{StaticResource CtrlBtn}" Content="🔍 扫描设备" Command="{Binding ScanCommand}" Margin="0,0,8,0"/>
+                    <Button Style="{StaticResource AccentBtn}" Content="{Binding ConnectButtonText}" Command="{Binding ConnectDisconnectCommand}" Margin="0,0,10,0"/>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse Width="8" Height="8" Fill="{Binding ConnDotBrush}"/>
+                        <TextBlock Text="{Binding StatusLine}" Foreground="{StaticResource FgDimBrush}" FontSize="12.5" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Style="{StaticResource CtrlBtn}" Content="📷 截图" FontSize="12.5" Margin="6,0,0,0"
+                            Command="{Binding ScreenshotCommand}" ToolTip="一键截图保存到设置目录（Ctrl+P）"/>
+                    <Button Style="{StaticResource CtrlBtn}" Content="🌗 跟随系统" FontSize="12.5" Margin="6,0,0,0"/>
+                    <Button Style="{StaticResource CtrlBtn}" Content="⚙ 设置" FontSize="12.5" Margin="6,0,0,0" Click="OpenSettings"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- ======== 2 三栏内容 ======== -->
+        <Grid Grid.Row="2" Margin="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="268"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="218"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- 左栏：读数 + 设备控制 -->
+            <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                <!-- 读数面板 -->
+                <Border Style="{StaticResource Panel}" Padding="16,12" Margin="0,0,0,10">
+                    <StackPanel>
+                        <DockPanel>
+                            <TextBlock Text="{Binding ModeLabel}" Style="{StaticResource PanelTitle}" DockPanel.Dock="Left"/>
+                            <Border Style="{StaticResource Badge}" DockPanel.Dock="Right" HorizontalAlignment="Right" Padding="6,1">
+                                <TextBlock Text="{Binding Range}" Foreground="{StaticResource AccentTextBrush}" FontSize="11.5"/>
+                            </Border>
+                        </DockPanel>
+                        <TextBlock Text="{Binding MainReading}" FontFamily="{StaticResource DigitalFont}"
+                                   FontSize="52" FontWeight="Bold" Foreground="{StaticResource AccentTextBrush}"
+                                   Effect="{StaticResource ReadingGlow}" Margin="0,2,0,0"/>
+                        <TextBlock Text="{Binding Unit}" FontSize="26" FontWeight="SemiBold"
+                                   Foreground="{StaticResource AccentLightBrush}" HorizontalAlignment="Right" Margin="0,-4,0,0"/>
+                        <!-- 副显行：顶部分隔虚线，水平排列 副显1 / 副显2（设计稿单行，gap 16） -->
+                        <Border BorderBrush="{StaticResource BorderBrushColor}" BorderThickness="0,1,0,0" Margin="0,8,0,0" Padding="0,6">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="副显1  " Foreground="{StaticResource FgDimBrush}" FontSize="12.5" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding Secondary1}" FontFamily="{StaticResource DigitalFont}" Foreground="{StaticResource FgBrush}" FontSize="12.5" Margin="0,0,16,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="副显2  " Foreground="{StaticResource FgDimBrush}" FontSize="12.5" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding Secondary2}" FontFamily="{StaticResource DigitalFont}" Foreground="{StaticResource FgBrush}" FontSize="12.5" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                            <Border Style="{StaticResource Badge}" Margin="0,0,6,0" Padding="6,1"><TextBlock Text="{Binding BatteryBadge}" Foreground="{StaticResource FgBrush}" FontSize="11.5"/></Border>
+                            <Border Style="{StaticResource Badge}" Margin="0,0,6,0" Padding="6,1" Visibility="{Binding HoldBadgeVis}"><TextBlock Text="HOLD" Foreground="{StaticResource DeltaBrush}" FontSize="11.5"/></Border>
+                            <Border Style="{StaticResource Badge}" Margin="0,0,6,0" Padding="6,1" Visibility="{Binding RelBadgeVis}"><TextBlock Text="REL" Foreground="{StaticResource FgFaintBrush}" FontSize="11.5"/></Border>
+                            <Border Style="{StaticResource Badge}" Padding="6,1" Visibility="{Binding LockBadgeVis}"><TextBlock Text="🔒" Foreground="{StaticResource FgFaintBrush}" FontSize="11.5"/></Border>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- 设备控制面板（4 列矩阵：功能开关 3 个 + 测量档位 10 个） -->
+                <Border Style="{StaticResource Panel}" Padding="12">
+                    <StackPanel>
+                        <TextBlock Text="设备控制" Style="{StaticResource PanelTitle}" Margin="0,0,0,8"/>
+
+                        <!-- 功能开关：HOLD/AUTO/REL（带状态保持；锁定无协议命令、仅设备侧可触发，不放入控制区） -->
+                        <UniformGrid Columns="3" Margin="0,0,0,6">
+                            <ToggleButton Style="{StaticResource MatrixToggle}" Margin="3" Command="{Binding HoldCommand}" IsChecked="{Binding HoldActive, Mode=OneWay}">
+                                <StackPanel><TextBlock Text="保持" FontSize="11.5" HorizontalAlignment="Center"/><TextBlock Text="HOLD" FontSize="8" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/></StackPanel>
+                            </ToggleButton>
+                            <ToggleButton Style="{StaticResource MatrixToggle}" Margin="3" Command="{Binding AutoCommand}" IsChecked="{Binding AutoActive, Mode=OneWay}">
+                                <StackPanel><TextBlock Text="自动量程" FontSize="11.5" HorizontalAlignment="Center"/><TextBlock Text="AUTO" FontSize="8" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/></StackPanel>
+                            </ToggleButton>
+                            <ToggleButton Style="{StaticResource MatrixToggle}" Margin="3" Command="{Binding RelCommand}" IsChecked="{Binding RelActive, Mode=OneWay}">
+                                <StackPanel><TextBlock Text="相对值" FontSize="11.5" HorizontalAlignment="Center"/><TextBlock Text="REL" FontSize="8" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/></StackPanel>
+                            </ToggleButton>
+                        </UniformGrid>
+
+                        <!-- 测量档位：点按切档（VDC/VAC/ADC/AAC/RES/CAP/DIODE/CONT/HZ/TEMP） -->
+                        <TextBlock Text="测量档位" Foreground="{StaticResource FgFaintBrush}" FontSize="11.5" Margin="2,4,0,4"/>
+                        <UniformGrid Columns="4">
+                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="vdc" IsEnabled="{Binding CanOperateDevice}">
+                                <StackPanel><TextBlock Text="直流电压" FontSize="10" HorizontalAlignment="Center"/><TextBlock Text="VDC" FontSize="8" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/></StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="vac" IsEnabled="{Binding CanOperateDevice}">
+                                <StackPanel><TextBlock Text="交流电压" FontSize="10" HorizontalAlignment="Center"/><TextBlock Text="VAC" FontSize="8" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/></StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="adc" IsEnabled="{Binding CanOperateDevice}">
+                                <StackPanel><TextBlock Text="直流电流" FontSize="10" HorizontalAlignment="Center"/><TextBlock Text="ADC" FontSize="8" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/></StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="aac" IsEnabled="{Binding CanOperateDevice}">
+                                <StackPanel><TextBlock Text="交流电流" FontSize="10" HorizontalAlignment="Center"/><TextBlock Text="AAC" FontSize="8" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/></StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="res" IsEnabled="{Binding CanOperateDevice}">
+                                <StackPanel><TextBlock Text="电阻" FontSize="10" HorizontalAlignment="Center"/><TextBlock Text="RES" FontSize="8" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/></StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="cap" IsEnabled="{Binding CanOperateDevice}">
+                                <StackPanel><TextBlock Text="电容" FontSize="10" HorizontalAlignment="Center"/><TextBlock Text="CAP" FontSize="8" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/></StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="diode" IsEnabled="{Binding CanOperateDevice}">
+                                <StackPanel><TextBlock Text="二极管" FontSize="10" HorizontalAlignment="Center"/><TextBlock Text="DIODE" FontSize="8" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/></StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="cont" IsEnabled="{Binding CanOperateDevice}">
+                                <StackPanel><TextBlock Text="通断" FontSize="10" HorizontalAlignment="Center"/><TextBlock Text="CONT" FontSize="8" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/></StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="hz" IsEnabled="{Binding CanOperateDevice}">
+                                <StackPanel><TextBlock Text="频率" FontSize="10" HorizontalAlignment="Center"/><TextBlock Text="HZ" FontSize="8" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/></StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="temp" IsEnabled="{Binding CanOperateDevice}">
+                                <StackPanel><TextBlock Text="温度" FontSize="10" HorizontalAlignment="Center"/><TextBlock Text="TEMP" FontSize="8" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/></StackPanel>
+                            </Button>
+                        </UniformGrid>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <!-- 中栏：页签 + 内容 -->
+            <Border Grid.Column="1" Style="{StaticResource Panel}" Padding="10">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <!-- 页签条 -->
+                    <Border Grid.Row="0" BorderBrush="#262B38" BorderThickness="0,0,0,1" Margin="0,0,0,8">
+                        <DockPanel>
+                        <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+                            <RadioButton x:Name="TabLive" Style="{StaticResource AppTab}" Content="📈 实时波形" IsChecked="True" Checked="TabChanged" GroupName="tabs"/>
+                            <RadioButton x:Name="TabPacket" Style="{StaticResource AppTab}" Content="🧾 原始报文" Checked="TabChanged" GroupName="tabs"/>
+                            <RadioButton x:Name="TabReplay" Style="{StaticResource AppTab}" Content="⏪ 数据回放" Checked="TabChanged" GroupName="tabs"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <StackPanel x:Name="PacketToolbar" Orientation="Horizontal" Visibility="Collapsed" VerticalAlignment="Center">
+                                <TextBox x:Name="PacketSearchBox" Width="170" Margin="0,0,8,0" VerticalAlignment="Center"
+                                         Style="{StaticResource DarkInput}" FontSize="11.5" Padding="6,2"
+                                         ToolTip="Ctrl+F 查找 HEX 关键词 · Enter 下一个 · Shift+Enter 上一个"
+                                         Text="{Binding PacketFilter, UpdateSourceTrigger=PropertyChanged}" KeyDown="OnPacketSearchKey" TextChanged="OnPacketSearchChanged"/>
+                                <Button x:Name="PacketPauseBtn" Style="{StaticResource CtrlBtn}" FontSize="11.5" Padding="8,2" Margin="0,0,6,0"
+                                        Content="⏸ 暂停滚动" Click="OnPacketPause"/>
+                                <Button Style="{StaticResource CtrlBtn}" FontSize="11.5" Padding="8,2" Margin="0,0,8,0"
+                                        Content="🗑 清空" Command="{Binding ClearPacketLogCommand}"/>
+                            </StackPanel>
+                            <TextBlock x:Name="WindowLabel" Foreground="{StaticResource FgFaintBrush}" FontSize="11.5" VerticalAlignment="Center">
+                                <Run Text="窗口: "/><Run Text="{Binding WindowSeconds}"/><Run Text="s ▾"/>
+                            </TextBlock>
+                        </StackPanel>
+                        </DockPanel>
+                    </Border>
+
+                    <!-- 内容区：三页 -->
+                    <Grid Grid.Row="1">
+                        <!-- 实时波形页 -->
+                        <Grid x:Name="LiveView">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Border Grid.Row="0" Style="{StaticResource Well}" Padding="0">
+                                <wv2:WebView2 x:Name="WaveformWeb"/>
+                            </Border>
+                            <TextBlock Grid.Row="1" Text="拖拽框选缩放 · 滚轮缩放 · 双击还原 · P 暂停" Foreground="{StaticResource FgFaintBrush}" FontSize="11.5" Margin="0,6,0,0"/>
+                        </Grid>
+
+                        <!-- 原始报文页 -->
+                        <Grid x:Name="PacketView" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Border Style="{StaticResource Well}" Padding="4">
+                                <ListView x:Name="PacketList" ItemsSource="{Binding PacketLog}" Background="Transparent" BorderThickness="0"
+                                          FontFamily="{StaticResource DigitalFont}" FontSize="12.5"
+                                          ScrollViewer.VerticalScrollBarVisibility="Auto">
+                                    <ListView.ItemContainerStyle>
+                                        <Style TargetType="ListViewItem">
+                                            <Setter Property="Background" Value="Transparent"/>
+                                            <Setter Property="Foreground" Value="{StaticResource FgBrush}"/>
+                                            <Setter Property="Padding" Value="4,2"/>
+                                        </Style>
+                                    </ListView.ItemContainerStyle>
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding Time}" Foreground="{StaticResource FgDimBrush}" Width="86"/>
+                                                <TextBlock Text="{Binding Direction}" Foreground="{Binding DirectionBrush}" Width="30"/>
+                                                <TextBlock Text="{Binding Hex}" Width="330"/>
+                                                <TextBlock Text="{Binding CrcLabel}" Foreground="{Binding CrcBrush}"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </Border>
+                            <DockPanel Grid.Row="1" Margin="0,6,0,0">
+                                <TextBlock Text="{Binding PacketCountText}" Foreground="{StaticResource FgDimBrush}" FontSize="11.5" DockPanel.Dock="Left" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding PacketFailText}" Foreground="{StaticResource MaxBrush}" FontSize="11.5" HorizontalAlignment="Right" DockPanel.Dock="Right" VerticalAlignment="Center"/>
+                            </DockPanel>
+                        </Grid>
+
+                        <!-- 数据回放页 -->
+                        <Grid x:Name="ReplayView" Visibility="Collapsed">
+                            <Border Style="{StaticResource Well}" Padding="20">
+                                <StackPanel VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                                        <TextBlock Text="{Binding ReplayReading}" FontFamily="{StaticResource DigitalFont}" FontSize="40" FontWeight="Bold"
+                                                   Foreground="{StaticResource AccentTextBrush}" Effect="{StaticResource ReadingGlow}"/>
+                                        <TextBlock Text="{Binding ReplayUnit}" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource AccentLightBrush}" VerticalAlignment="Bottom" Margin="6,0,0,6"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                        <Button Style="{StaticResource AccentBtn}" Content="{Binding ReplayPlayLabel}" Width="86" Margin="0,0,8,0" Command="{Binding ReplayPlayCommand}"/>
+                                        <Button Style="{StaticResource CtrlBtn}" Content="⏹ 停止" Margin="0,0,14,0" Command="{Binding ReplayStopCommand}"/>
+                                        <Button Style="{StaticResource CtrlBtn}" Content="0.5x" Padding="8,4" Margin="0,0,4,0" Command="{Binding SetReplaySpeedCommand}" CommandParameter="0.5"/>
+                                        <Button Style="{StaticResource CtrlBtn}" Content="1x" Padding="8,4" Margin="0,0,4,0" Command="{Binding SetReplaySpeedCommand}" CommandParameter="1"/>
+                                        <Button Style="{StaticResource CtrlBtn}" Content="2x" Padding="8,4" Margin="0,0,4,0" Command="{Binding SetReplaySpeedCommand}" CommandParameter="2"/>
+                                        <Button Style="{StaticResource CtrlBtn}" Content="4x" Padding="8,4" Margin="0,0,4,0" Command="{Binding SetReplaySpeedCommand}" CommandParameter="4"/>
+                                        <Button Style="{StaticResource CtrlBtn}" Content="10x" Padding="8,4" Margin="0,0,4,0" Command="{Binding SetReplaySpeedCommand}" CommandParameter="10"/>
+                                        <Button Style="{StaticResource CtrlBtn}" Content="📂 打开 CSV" Margin="20,0,0,0" Click="OpenReplay"/>
+                                        <Button Style="{StaticResource CtrlBtn}" Content="⏪ 退出回放" Margin="6,0,0,0" Click="ExitReplay"/>
+                                    </StackPanel>
+                                    <ProgressBar Height="8" Value="{Binding ReplayProgress, Mode=OneWay}" Maximum="100" Background="{StaticResource InputBrush}" Foreground="{StaticResource AccentGradient}" BorderThickness="0"/>
+                                    <DockPanel Margin="0,6,0,0">
+                                        <TextBlock Text="{Binding ReplayTimeText}" Foreground="{StaticResource FgFaintBrush}" FontSize="11.5" DockPanel.Dock="Left"/>
+                                        <TextBlock Text="{Binding ReplayStatusText}" Foreground="{StaticResource DeltaBrush}" FontSize="11.5" HorizontalAlignment="Right" DockPanel.Dock="Right"/>
+                                    </DockPanel>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <!-- 右栏：统计 + 阈值报警 -->
+            <StackPanel Grid.Column="2" Margin="10,0,0,0">
+                <!-- 测量统计 -->
+                <Border Style="{StaticResource Panel}" Padding="12" Margin="0,0,0,10">
+                    <StackPanel>
+                        <DockPanel Margin="0,0,0,8">
+                            <TextBlock Text="测量统计" Style="{StaticResource PanelTitle}" DockPanel.Dock="Left"/>
+                            <Button Content="清零" Command="{Binding ResetStatsCommand}" DockPanel.Dock="Right" HorizontalAlignment="Right"
+                                    Background="{StaticResource InputBrush}" Foreground="{StaticResource FgDimBrush}" BorderBrush="{StaticResource BorderLightBrush}"
+                                    BorderThickness="1" Padding="8,1" FontSize="11.5" Cursor="Hand"/>
+                        </DockPanel>
+                        <UniformGrid Columns="2">
+                            <Border Background="{StaticResource BgBrush}" BorderBrush="{StaticResource BorderWellBrush}" BorderThickness="1" CornerRadius="6" Padding="6,4" Margin="2">
+                                <StackPanel><TextBlock Text="最小值" FontSize="11.5" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/><TextBlock Text="{Binding StatMin}" FontFamily="{StaticResource DigitalFont}" FontSize="15" Foreground="{StaticResource MinBrush}" HorizontalAlignment="Center"/></StackPanel>
+                            </Border>
+                            <Border Background="{StaticResource BgBrush}" BorderBrush="{StaticResource BorderWellBrush}" BorderThickness="1" CornerRadius="6" Padding="6,4" Margin="2">
+                                <StackPanel><TextBlock Text="最大值" FontSize="11.5" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/><TextBlock Text="{Binding StatMax}" FontFamily="{StaticResource DigitalFont}" FontSize="15" Foreground="{StaticResource MaxBrush}" HorizontalAlignment="Center"/></StackPanel>
+                            </Border>
+                            <Border Background="{StaticResource BgBrush}" BorderBrush="{StaticResource BorderWellBrush}" BorderThickness="1" CornerRadius="6" Padding="6,4" Margin="2">
+                                <StackPanel><TextBlock Text="平均值" FontSize="11.5" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/><TextBlock Text="{Binding StatAvg}" FontFamily="{StaticResource DigitalFont}" FontSize="15" Foreground="{StaticResource FgBrush}" HorizontalAlignment="Center"/></StackPanel>
+                            </Border>
+                            <Border Background="{StaticResource BgBrush}" BorderBrush="{StaticResource BorderWellBrush}" BorderThickness="1" CornerRadius="6" Padding="6,4" Margin="2">
+                                <StackPanel><TextBlock Text="Δ 峰峰" FontSize="11.5" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/><TextBlock Text="{Binding StatDelta}" FontFamily="{StaticResource DigitalFont}" FontSize="15" Foreground="{StaticResource DeltaBrush}" HorizontalAlignment="Center"/></StackPanel>
+                            </Border>
+                        </UniformGrid>
+                        <TextBlock Text="{Binding StatSummary}" Foreground="{StaticResource FgFaintBrush}" FontSize="11.5" HorizontalAlignment="Center" Margin="0,6,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- 阈值报警 -->
+                <Border Style="{StaticResource Panel}" Padding="12">
+                    <StackPanel>
+                        <DockPanel Margin="0,0,0,8">
+                            <TextBlock Text="阈值报警" Style="{StaticResource PanelTitle}" DockPanel.Dock="Left"/>
+                            <Border CornerRadius="10" Background="{StaticResource AccentBrush}" Padding="8,1" DockPanel.Dock="Right" HorizontalAlignment="Right">
+                                <TextBlock Text="{Binding AlarmEnabledText}" Foreground="White" FontSize="11.5"/>
+                            </Border>
+                        </DockPanel>
+                        <DockPanel Margin="0,0,0,5">
+                            <TextBlock Text="上限" Foreground="{StaticResource FgBrush}" FontSize="12.5" VerticalAlignment="Center" DockPanel.Dock="Left"/>
+                            <TextBlock Text=" V" Foreground="{StaticResource FgDimBrush}" FontSize="12.5" VerticalAlignment="Center" DockPanel.Dock="Right"/>
+                            <TextBox Style="{StaticResource DarkInput}" Width="70" HorizontalAlignment="Right" Text="{Binding AlarmUpper, UpdateSourceTrigger=PropertyChanged}"/>
+                        </DockPanel>
+                        <DockPanel Margin="0,0,0,8">
+                            <TextBlock Text="下限" Foreground="{StaticResource FgBrush}" FontSize="12.5" VerticalAlignment="Center" DockPanel.Dock="Left"/>
+                            <TextBlock Text=" V" Foreground="{StaticResource FgDimBrush}" FontSize="12.5" VerticalAlignment="Center" DockPanel.Dock="Right"/>
+                            <TextBox Style="{StaticResource DarkInput}" Width="70" HorizontalAlignment="Right" Text="{Binding AlarmLower, UpdateSourceTrigger=PropertyChanged}"/>
+                        </DockPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <CheckBox IsChecked="{Binding AlarmSound}" VerticalAlignment="Center" Margin="0,0,10,0"
+                                      Content="🔊 声音" Foreground="{StaticResource FgBrush}" FontSize="12.5"/>
+                            <CheckBox IsChecked="{Binding AlarmPopup}" VerticalAlignment="Center"
+                                      Content="🪟 弹窗" Foreground="{StaticResource FgBrush}" FontSize="12.5"/>
+                        </StackPanel>
+                        <Border BorderBrush="{StaticResource BorderBrushColor}" BorderThickness="0,1,0,0" Margin="0,4,0,6" Padding="0,6">
+                            <StackPanel>
+                                <TextBlock Text="报警事件 (最近)" Foreground="{StaticResource FgFaintBrush}" FontSize="11.5" Margin="0,0,0,4"/>
+                                <ListBox ItemsSource="{Binding AlarmLog}" Background="Transparent" BorderThickness="0"
+                                         Foreground="{StaticResource MaxBrush}" FontFamily="{StaticResource DigitalFont}" FontSize="11.5" MaxHeight="120"
+                                         ScrollViewer.VerticalScrollBarVisibility="Auto"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Grid>
+
+        <!-- ======== 3 状态栏 ======== -->
+        <Border Grid.Row="3" Background="#191D29" BorderBrush="#262B38" BorderThickness="0,1,0,0" Padding="14,5">
+            <DockPanel>
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                    <Ellipse Width="8" Height="8" Fill="{Binding ConnDotBrush}"/>
+                    <TextBlock Text="{Binding ConnStatusText}" Foreground="{StaticResource FgDimBrush}" FontSize="12.5" Margin="6,0,14,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding FrameRateText}" Foreground="{StaticResource FgDimBrush}" FontSize="12.5" Margin="0,0,14,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding LatencyText}" Foreground="{StaticResource FgDimBrush}" FontSize="12.5" VerticalAlignment="Center"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Visibility="{Binding RecIndicatorVis}" Margin="0,0,14,0" VerticalAlignment="Center">
+                        <Ellipse Width="9" Height="9" Fill="{StaticResource RecBrush}">
+                            <Ellipse.Style>
+                                <Style TargetType="Ellipse">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsRecording}" Value="True">
+                                            <DataTrigger.EnterActions>
+                                                <BeginStoryboard>
+                                                    <Storyboard RepeatBehavior="Forever">
+                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity" From="1" To="0.25" Duration="0:0:0.6" AutoReverse="True"/>
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </DataTrigger.EnterActions>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Ellipse.Style>
+                        </Ellipse>
+                        <TextBlock Text="{Binding RecStatusText}" Foreground="{StaticResource MaxBrush}" FontSize="12.5" Margin="5,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <Button Style="{StaticResource CtrlBtn}" Content="💾 导出 CSV" FontSize="12.5" Margin="0,0,6,0" Click="ExportCsv"/>
+                    <Button x:Name="RecordButton" Style="{StaticResource RecBtn}" Content="{Binding RecordButtonContent}" FontSize="12.5" Command="{Binding ToggleRecordingCommand}" IsEnabled="{Binding CanOperateDevice}"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+    </Grid>
+    </Border>
+</Window>

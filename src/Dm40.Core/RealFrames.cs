@@ -1,0 +1,59 @@
+namespace Dm40.Core
+{
+    /// <summary>
+    /// 真实 DM40B 设备抓取的测量帧字节常量（17 字节真实布局），供移除模拟源后的离线单测使用。
+    /// 帧来源：DM40B 接 5V 基准源实测（表显 5.0023V 上下），2026-07-20 经 CLI 抓取验证。
+    /// 布局：DF 05 03 09 | f4=0B f5=flag f6=status | f7,f8,f9=M3/M2/M1比例槽 | f10-11=M3 f12-13=M2 f14-15=M1计数(小端) | f16=CRC(全帧和&amp;0xFF==0)。
+    /// 工程值：VDC AUTO 档(flag=0x28)、6V 比例槽(0x18)、满量程 60000 → value = M1 × 6.0 / 60000。
+    /// </summary>
+    public static class RealFrames
+    {
+        /// <summary>设备满量程计数（实测 DM40B 为 60000，见 ProtocolConstants.ModelTable 注释）。</summary>
+        public const int DeviceCounts = 60000;
+
+        /// <summary>真实帧：DCV AUTO 5.0020V（M1=50022）。表笔接 5V 基准源。</summary>
+        public static readonly byte[] Dcv5V_A =
+        {
+            0xDF, 0x05, 0x03, 0x09, 0x0B, 0x28, 0x04, 0x00, 0x00, 0x18, 0xFF, 0xFF, 0xFF, 0xFF, 0x66, 0xC3, 0x9C
+        };
+
+        /// <summary>真实帧：DCV AUTO 5.0022V（M1=50023）。</summary>
+        public static readonly byte[] Dcv5V_B =
+        {
+            0xDF, 0x05, 0x03, 0x09, 0x0B, 0x28, 0x04, 0x00, 0x00, 0x18, 0xFF, 0xFF, 0xFF, 0xFF, 0x67, 0xC3, 0x9B
+        };
+
+        /// <summary>真实帧：DCV AUTO 5.0024V（M1=50024）。</summary>
+        public static readonly byte[] Dcv5V_C =
+        {
+            0xDF, 0x05, 0x03, 0x09, 0x0B, 0x28, 0x04, 0x00, 0x00, 0x18, 0xFF, 0xFF, 0xFF, 0xFF, 0x68, 0xC3, 0x9A
+        };
+
+        /// <summary>过载帧：M1=0xFFFF → OL（NormValue=null，IsValid=true）。</summary>
+        public static readonly byte[] Overload =
+        {
+            0xDF, 0x05, 0x03, 0x09, 0x0B, 0x28, 0x04, 0x00, 0x00, 0x18, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xC7
+        };
+
+        /// <summary>负电压帧：比例槽 0x19（0x18 | 符号位0x01）→ -5.0020V。</summary>
+        public static readonly byte[] Negative5V =
+        {
+            0xDF, 0x05, 0x03, 0x09, 0x0B, 0x28, 0x04, 0x00, 0x00, 0x19, 0xFF, 0xFF, 0xFF, 0xFF, 0x66, 0xC3, 0x9B
+        };
+
+        /// <summary>低电量帧：status=0x02 → 电量 2 格。</summary>
+        public static readonly byte[] LowBattery =
+        {
+            0xDF, 0x05, 0x03, 0x09, 0x0B, 0x28, 0x02, 0x00, 0x00, 0x18, 0xFF, 0xFF, 0xFF, 0xFF, 0x66, 0xC3, 0x9E
+        };
+
+        /// <summary>CRC 损坏帧（末字节翻转），应判定 CrcOk=false。</summary>
+        public static readonly byte[] BadCrc =
+        {
+            0xDF, 0x05, 0x03, 0x09, 0x0B, 0x28, 0x04, 0x00, 0x00, 0x18, 0xFF, 0xFF, 0xFF, 0xFF, 0x66, 0xC3, 0x00
+        };
+
+        /// <summary>5V 基准源附近自然波动的三帧序列（5.0020/5.0022/5.0024），供统计/三方对账测试循环注入。</summary>
+        public static readonly byte[][] Dcv5VSequence = { Dcv5V_A, Dcv5V_B, Dcv5V_C };
+    }
+}

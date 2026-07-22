@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body, #chart { width:100%; height:100%; overflow:hidden; background:#0B0E14; }
+</style>
+<script>/*ECHARTS_INLINE*/</script>
+</head>
+<body>
+<div id="chart"></div>
+<script>
+// 波形页：所有呈现与交互均用 ECharts 默认控件——tooltip 悬停、toolbox（区域缩放/还原/保存为图片）、
+// dataZoom inside（滚轮缩放 + 拖拽平移）、dataZoom slider（底部缩略条）。C# 仅经 window.dm40 喂数据。
+(function () {
+  var chart = echarts.init(document.getElementById('chart'), null, { renderer: 'canvas' });
+  var mode = 'live';        // 'live' | 'replay'
+  var win = 60;             // 实时窗口秒数（C# setWindow）
+  var unit = '';            // 单位（tooltip 显示）
+  var xs = [], ys = [];
+
+  function fmt(v) {
+    if (v == null || isNaN(v)) return '--';
+    var a = Math.abs(v);
+    if (a >= 1000) return v.toFixed(1);
+    if (a >= 1) return v.toFixed(3);
+    return v.toFixed(4);
+  }
+
+  function buildOption() {
+    return {
+      backgroundColor: '#0B0E14',
+      animation: false,
+      grid: { left: 8, right: 16, top: 12, bottom: 48, containLabel: true },
+      tooltip: {
+        trigger: 'axis',
+        backgroundColor: '#1F2430', borderColor: '#3A4152', borderWidth: 1,
+        textStyle: { color: '#E5E7EB', fontSize: 11 },
+        formatter: function (p) {
+          var d = p[0];
+          if (!d || !d.data) return '';
+          return 't=' + Number(d.data[0]).toFixed(1) + 's<br/><b>' + fmt(d.data[1]) + unit + '</b>';
+        }
+      },
+      xAxis: {
+        type: 'value',
+        min: mode === 'live' ? -win : null,
+        max: mode === 'live' ? 0 : null,
+        axisLine: { lineStyle: { color: '#2A3042' } },
+        axisTick: { show: false },
+        axisLabel: { color: '#9CA3AF', fontSize: 10, formatter: function (v) { return v.toFixed(0) + 's'; } },
+        splitLine: { show: false }
+      },
+      yAxis: {
+        type: 'value',
+        scale: true,
+        splitNumber: 2,   // 约 3 条刻度（上/中/下），参考设备 UI 的疏朗刻度
+        axisLine: { show: false },
+        axisTick: { show: false },
+        axisLabel: { color: '#7DD3C8', fontSize: 11, margin: 8, formatter: function (v) { return fmt(v) + unit; } },
+        splitLine: { lineStyle: { color: 'rgba(42,48,66,0.6)', type: 'dotted' } }
+      },
+      dataZoom: [
+        { type: 'inside', xAxisIndex: 0, zoomOnMouseWheel: true, moveOnMouseMove: false, moveOnMouseWheel: false },
+        {
+          type: 'slider', xAxisIndex: 0, bottom: 6, height: 20,
+          borderColor: '#2A3042', backgroundColor: 'rgba(20,24,34,0.6)',
+          fillerColor: 'rgba(99,102,241,0.14)',
+          handleStyle: { color: '#4F46E5' }, moveHandleStyle: { color: '#4F46E5' },
+          dataBackground: { lineStyle: { color: '#3A4152' }, areaStyle: { color: 'rgba(99,102,241,0.10)' } },
+          selectedDataBackground: { lineStyle: { color: '#818CF8' }, areaStyle: { color: 'rgba(99,102,241,0.22)' } },
+          textStyle: { color: '#9CA3AF', fontSize: 9 }, handleSize: '110%'
+        }
+      ],
+      series: [{
+        id: 'reading', name: '读数', type: 'line', data: [],
+        showSymbol: false, smooth: 0.35,
+        lineStyle: { color: '#818CF8', width: 2 },
+        markLine: { silent: true, symbol: 'none', animation: false, data: [] },
+        areaStyle: {
+          color: {
+            type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [
+              { offset: 0, color: 'rgba(99,102,241,0.38)' },
+              { offset: 1, color: 'rgba(11,14,20,0.02)' }
+            ]
+          }
+        },
+        z: 3
+      }]
+    };
+  }
+  chart.setOption(buildOption());
+
+  function zip() {
+    var d = new Array(xs.length);
+    for (var i = 0; i < xs.length; i++) d[i] = [xs[i], ys[i]];
+    return d;
+  }
+
+  // 实时模式 X 轴固定 [-win,0]（每帧只换数据不碰轴 → 不抖动）；回放模式自适应全量。
+  function applyAxis() {
+    chart.setOption({ xAxis: { min: mode === 'live' ? -win : null, max: mode === 'live' ? 0 : null } });
+  }
+
+  window.dm40 = {
+    setSeries: function (points) {
+      xs = []; ys = [];
+      for (var i = 0; i < points.length; i++) { xs.push(points[i][0]); ys.push(points[i][1]); }
+      chart.setOption({ series: [{ id: 'reading', data: zip() }] });
+    },
+    setMode: function (m) { mode = m === 'replay' ? 'replay' : 'live'; applyAxis(); },
+    setWindow: function (seconds) { win = seconds || 60; if (mode === 'live') applyAxis(); },
+    setUnit: function (u) { unit = u || ''; },
+    setLimits: function (upper, lower, u) {
+      if (u) unit = u;
+      var ml = [];
+      if (upper != null) ml.push({ yAxis: upper, lineStyle: { color: '#EF4444', type: 'dashed', width: 1.5 }, label: { show: true, position: 'insideEndTop', color: '#EF4444', fontSize: 10, formatter: '上限 ' + fmt(upper) + unit } });
+      if (lower != null) ml.push({ yAxis: lower, lineStyle: { color: '#F59E0B', type: 'dashed', width: 1.5 }, label: { show: true, position: 'insideEndBottom', color: '#F59E0B', fontSize: 10, formatter: '下限 ' + fmt(lower) + unit } });
+      chart.setOption({ series: [{ id: 'reading', markLine: { data: ml } }] });
+    },
+    clear: function () { xs = []; ys = []; chart.setOption({ series: [{ id: 'reading', data: [] }] }); }
+  };
+
+  // 鼠标区域框选缩放（X 轴）：拖出矩形 → 按绘图区像素百分比 dataZoom 缩放
+  //（百分比在实时滚动数据中保持稳定，不受绝对秒坐标漂移影响）；双击还原全域。不使用 toolbox 图标。
+  var dom = chart.getDom();
+  var dragStart = null;
+  function evtOffset(evt) { var r = dom.getBoundingClientRect(); return [evt.clientX - r.left, evt.clientY - r.top]; }
+  function drawSel(x0, x1) {
+    chart.setOption({ graphic: [{ id: 'selBox', type: 'rect', silent: true, z: 100,
+      shape: { x: Math.min(x0, x1), y: 0, width: Math.abs(x1 - x0), height: dom.clientHeight },
+      style: { fill: 'rgba(129,140,248,0.14)', stroke: '#818CF8', lineWidth: 1, lineDash: [4, 4] } }] });
+  }
+  function gridRect() { return chart.getModel().getComponent('grid', 0).coordinateSystem.getRect(); }
+  // ECharts 的 graphic 是 merge 模式：setOption({graphic:[]}) 空数组会被忽略、旧元素不移除；
+  // 必须 replaceMerge:['graphic'] 才能真正清除框选矩形。
+  function clearSel() { chart.setOption({ graphic: [] }, { replaceMerge: ['graphic'] }); }
+  dom.addEventListener('mousedown', function (e) {
+    if (e.button !== 0) return;
+    var p = evtOffset(e);
+    try { if (!chart.containPixel('grid', p)) return; } catch (_) { return; }
+    dragStart = p[0];
+  });
+  window.addEventListener('mousemove', function (e) { if (dragStart != null) drawSel(dragStart, evtOffset(e)[0]); });
+  window.addEventListener('mouseup', function (e) {
+    if (dragStart == null) return;
+    var x0 = dragStart; dragStart = null;          // 先置 null，阻止后续 mousemove 重画矩形
+    var x1 = evtOffset(e)[0];
+    clearSel();                                     // 取消框选矩形（replaceMerge 真正移除）
+    if (Math.abs(x1 - x0) < 5) return;
+    var r = gridRect();
+    var a = (Math.min(x0, x1) - r.x) / r.width * 100;
+    var b = (Math.max(x0, x1) - r.x) / r.width * 100;
+    chart.dispatchAction({ type: 'dataZoom', start: Math.max(0, a), end: Math.min(100, b) });
+  });
+  dom.addEventListener('dblclick', function () { chart.dispatchAction({ type: 'dataZoom', start: 0, end: 100 }); });
+
+  window.addEventListener('resize', function () { chart.resize(); });
+})();
+</script>
+</body>
+</html>

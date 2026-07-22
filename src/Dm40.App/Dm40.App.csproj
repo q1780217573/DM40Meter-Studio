@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>8.0</LangVersion>
+    <AssemblyName>DM40MeterStudio</AssemblyName>
+    <RootNamespace>Dm40.App</RootNamespace>
+    <UseWPF>true</UseWPF>
+    <ApplicationIcon />
+    <!-- WPF 桌面应用：MVVM。UI 线程与数据源回调经 Dispatcher 隔离。 -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Windows.Forms" />
+    <ProjectReference Include="..\Dm40.Core\Dm40.Core.csproj" />
+    <ProjectReference Include="..\Dm40.Protocol\Dm40.Protocol.csproj" />
+    <ProjectReference Include="..\Dm40.Cli\Dm40.Cli.csproj" />
+    <ProjectReference Include="..\Dm40.Transport\Dm40.Transport.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ScottPlot 4.x：高性能实时波形（回放/兜底；实时波形主用 WebView2+ECharts） -->
+    <PackageReference Include="ScottPlot.WPF" Version="4.1.68" />
+    <!-- WebView2：中栏波形用 ECharts 渲染（WPF 控件 Microsoft.Web.WebView2.Wpf.dll，自动拷贝 WebView2Loader.dll） -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+    <!-- WinRT 投影（winmd 引用） -->
+    <PackageReference Include="Microsoft.Windows.SDK.Contracts" Version="10.0.19041.1" />
+    <!-- WinRT 互操作实现（提供运行时 System.Runtime.WindowsRuntime.dll，须复制到输出供运行期加载） -->
+    <PackageReference Include="System.Runtime.WindowsRuntime" Version="4.7.0" />
+  </ItemGroup>
+
+  <!-- 本地嵌入 ECharts 库 + 波形页模板（离线可用），随构建复制到输出目录，启动时读入内联进波形 HTML -->
+  <ItemGroup>
+    <Content Include="Assets\echarts.min.js" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\waveform.html" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- net48 下 WinRT 互操作 dll 默认不复制到输出；构建后显式拷贝 NuGet 的实现版（与编译引用同为 4.0.14.0），供运行期加载 -->
+  <Target Name="CopyWinRtInterop" AfterTargets="Build">
+    <ItemGroup>
+      <_WinRtDll Include="$(NuGetPackageRoot)system.runtime.windowsruntime\*\lib\netstandard2.0\System.Runtime.WindowsRuntime.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_WinRtDll)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

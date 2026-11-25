@@ -18,7 +18,25 @@ namespace Dm40.App
         [DllImport("kernel32.dll")] private static extern bool AttachConsole(int dwProcessId);
         [DllImport("kernel32.dll")] private static extern bool AllocConsole();
         [DllImport("kernel32.dll")] private static extern bool FreeConsole();
+        [DllImport("kernel32.dll")] private static extern IntPtr GetStdHandle(int nStdHandle);
+        [DllImport("kernel32.dll")] private static extern uint GetFileType(IntPtr hFile);
         private const int ATTACH_PARENT_PROCESS = -1;
+        private const int STD_OUTPUT_HANDLE = -11;
+        private const uint FILE_TYPE_DISK = 1;
+        private const uint FILE_TYPE_PIPE = 3;
+
+        /// <summary>
+        /// stdout 是否已被宿主重定向到文件/管道。
+        /// 已重定向时不能再 AttachConsole/AllocConsole——那会把输出抢到另一控制台，
+        /// 调用方（脚本、CI、AI 工具）拿到 0 字节且无退出码（2026-11-25 实测踩到）。
+        /// </summary>
+        private static bool StdOutIsRedirected()
+        {
+            var h = GetStdHandle(STD_OUTPUT_HANDLE);
+            if (h == IntPtr.Zero || h == new IntPtr(-1)) return false;
+            var t = GetFileType(h);
+            return t == FILE_TYPE_DISK || t == FILE_TYPE_PIPE;
+        }
 
         protected override void OnStartup(StartupEventArgs e)
         {
@@ -58,8 +76,9 @@ namespace Dm40.App
             // 清掉同步上下文，让 await 延续走线程池，BLE 异步调用才能正常完成。
             System.Threading.SynchronizationContext.SetSynchronizationContext(null);
 
-            // 附加父控制台以输出（从终端运行时）；失败则新建一个（双击/脚本重定向时）
-            if (!AttachConsole(ATTACH_PARENT_PROCESS))
+            // 附加父控制台以输出（从终端运行时）；stdout 已被重定向（脚本/管道）时保持原句柄。
+            // 只有既没被重定向、又附加不上父控制台（双击启动）时才新开控制台。
+            if (!StdOutIsRedirected() && !AttachConsole(ATTACH_PARENT_PROCESS))
                 AllocConsole();
 
             // 重建 stdout/stderr 句柄到刚附加的控制台

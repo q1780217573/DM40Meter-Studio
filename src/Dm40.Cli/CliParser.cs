@@ -12,7 +12,7 @@ namespace Dm40.Cli
         {
             var opt = new CliOptions();
             if (args == null || args.Length == 0)
-                throw new CliArgumentException("缺少命令。用法: --cli <scan|stream|send|record> [options]");
+                throw new CliArgumentException("缺少命令。用法: --cli <scan|stream|send|record|probe> [options]");
 
             // 第一个非选项 token 是命令
             int i = 0;
@@ -23,6 +23,7 @@ namespace Dm40.Cli
                 case "stream": opt.Command = CliCommand.Stream; break;
                 case "send": opt.Command = CliCommand.Send; break;
                 case "record": opt.Command = CliCommand.Record; break;
+                case "probe": opt.Command = CliCommand.Probe; break;
                 default: throw new CliArgumentException("未知命令: " + cmd);
             }
             i = 1;
@@ -48,6 +49,8 @@ namespace Dm40.Cli
                         opt.UpperLimit = ParseDouble(Next(), a); break;
                     case "--lower":
                         opt.LowerLimit = ParseDouble(Next(), a); break;
+                    case "--settle":
+                        opt.SettleMs = ParseInt(Next(), a); break;
                     default:
                         throw new CliArgumentException("未知选项: " + a);
                 }

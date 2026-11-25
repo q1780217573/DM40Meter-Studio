@@ -90,6 +90,32 @@ namespace Dm40.App.ViewModels
             ReplayStopCommand = new RelayCommand(ReplayStop, () => IsReplayLoaded);
             SetReplaySpeedCommand = new RelayCommand(p => SetReplaySpeed(double.Parse((string)p, System.Globalization.CultureInfo.InvariantCulture)), _ => IsReplayLoaded);
             ScreenshotCommand = new RelayCommand(() => ScreenshotRequested?.Invoke());
+
+            LoadSettings();
+        }
+
+        // ===================== 设置持久化 =====================
+
+        /// <summary>启动时读回上次保存的设置（时间窗口 / 扫描自动连接 / 截图目录）。</summary>
+        private void LoadSettings()
+        {
+            var s = AppSettings.Load(DefaultDataRoot, _screenshotDir);
+            WindowSeconds = s.WindowSeconds;
+            AutoConnect = s.AutoConnect;
+            if (!string.IsNullOrWhiteSpace(s.ScreenshotDir)) ScreenshotDir = s.ScreenshotDir;
+        }
+
+        /// <summary>把当前设置写回 settings.ini（设置窗口点保存时调用）。</summary>
+        public void SaveSettings()
+        {
+            var s = new AppSettings
+            {
+                WindowSeconds = WindowSeconds,
+                AutoConnect = AutoConnect,
+                ScreenshotDir = ScreenshotDir,
+                FilePath = AppSettings.DefaultPath(DefaultDataRoot),
+            };
+            if (!s.Save(out var err)) StatusLine = "设置保存失败: " + err;
         }
 
         // ===================== 读数面板 =====================

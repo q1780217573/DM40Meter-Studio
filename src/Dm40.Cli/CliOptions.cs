@@ -8,6 +8,7 @@ namespace Dm40.Cli
         Stream,
         Send,
         Record,
+        Probe,
     }
 
     /// <summary>输出格式。</summary>
@@ -28,5 +29,8 @@ namespace Dm40.Cli
         public string OutFile;
         public double? UpperLimit;
         public double? LowerLimit;
+
+        /// <summary>probe 命令：每个档位发出后的观察窗口（毫秒）。</summary>
+        public int SettleMs = 800;
     }
 }

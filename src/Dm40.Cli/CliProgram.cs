@@ -57,6 +57,7 @@ namespace Dm40.Cli
                     case CliCommand.Stream: return RunStream(source, opt, stdout, stderr);
                     case CliCommand.Send: return RunSend(source, opt, stdout, stderr);
                     case CliCommand.Record: return RunRecord(source, opt, stdout, stderr);
+                    case CliCommand.Probe: return RunProbe(source, opt, stdout, stderr);
                     default:
                         stderr.WriteLine("未知命令");
                         return ExitArgError;
@@ -136,11 +137,23 @@ namespace Dm40.Cli
             if (opt.Format == CliFormat.Csv)
                 stdout.WriteLine(CsvSerializer.Header);
 
+            int readingCount = 0;
             session.ReadingAvailable += m =>
+            {
+                readingCount++;
                 stdout.WriteLine(FormatReading(m, opt.Format, lastAlarm));
+            };
 
             WaitForDuration(opt.DurationSeconds);
             source.Disconnect();
+
+            // 契约修正（2026-11-25）：连接失败/GUI 占用链路时实测会拿到 status=Connected 但 0 帧，
+            // 原实现仍返回 0，自动化只看退出码会误判成功。无数据帧一律按连接失败返回 3。
+            if (readingCount == 0)
+            {
+                stderr.WriteLine("0 帧数据：链路未真正就绪（GUI 是否占用蓝牙？）");
+                return ExitConnectFailed;
+            }
             return ExitOk;
         }
 
@@ -197,9 +210,13 @@ namespace Dm40.Cli
             return ExitOk;
         }
 
-        // 命令名 → 命令帧（复用 ProtocolConstants，逐字节一致）
-        internal static readonly IReadOnlyDictionary<string, byte[]> CommandMap =
-            new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase)
+        // 命令名 → 命令帧。原有 10 个别名保持 CLI 契约不变；
+        // 另把 ModeCatalog 的全部档位/量程（如 vdc-600mv、res-online-auto、temp-auto）并进来，供 send 与 probe 共用。
+        internal static readonly IReadOnlyDictionary<string, byte[]> CommandMap = BuildCommandMap();
+
+        private static Dictionary<string, byte[]> BuildCommandMap()
+        {
+            var map = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase)
             {
                 { "hold-on", ProtocolConstants.CmdHoldOn },
                 { "hold-off", ProtocolConstants.CmdHoldOff },
@@ -212,6 +229,129 @@ namespace Dm40.Cli
                 { "hz", ProtocolConstants.CmdHz },
                 { "temp", ProtocolConstants.CmdTemp },
             };
+            foreach (var m in ModeCatalog.All)
+                if (!map.ContainsKey(m.Key)) map[m.Key] = ModeCatalog.BuildCommand(m.Flag);
+            return map;
+        }
+
+        // ---------------- probe ----------------
+
+        // FlagInfo 之外、值得真机试一把的候选（判断项：温度 ℉ / 占空比 的 flag 尚未证实）
+        private static readonly byte[] ProbeExtraFlags =
+        {
+            0x06, 0x07, 0x0B, 0x13, 0x1B,
+            0x33, 0x3B, 0x43, 0x46, 0x47,
+            0x73, 0x9B, 0xBF,
+        };
+
+        /// <summary>
+        /// 逐条下发档位/量程命令，读回帧的 data[5] 判定该 flag 是否被设备接受。
+        /// 只切档，不改任何测量参数；结束后回到 VDC AUTO。
+        /// </summary>
+        private int RunProbe(IMeterDataSource source, CliOptions opt, System.IO.TextWriter stdout, System.IO.TextWriter stderr)
+        {
+            int code = ConnectAndMeasure(source, opt, stderr);
+            if (code != ExitOk) return code;
+
+            var state = new ProbeState(source.DeviceCounts);
+            source.FrameReceived += state.OnFrame;
+
+            var deadline = DateTime.UtcNow.AddSeconds(3);
+            while (!state.HasFrame && DateTime.UtcNow < deadline)
+                _waiter.Wait(TimeSpan.FromMilliseconds(100));
+
+            if (!state.HasFrame)
+            {
+                stderr.WriteLine("未收到测量帧，无法探测（GUI 是否占用链路？）");
+                source.Disconnect();
+                return ExitConnectFailed;
+            }
+
+            int settle = Math.Max(200, opt.SettleMs);
+            var targets = new List<ModeEntry>(ModeCatalog.All);
+            foreach (var f in ProbeExtraFlags)
+                targets.Add(new ModeEntry(f, "?", "?", "probe-" + f.ToString("x2"), "候选 0x" + f.ToString("X2")));
+
+            if (opt.Format == CliFormat.Csv)
+                stdout.WriteLine("flag,key,kind,range,observed,obs_kind,obs_range,accepted,frames");
+
+            foreach (var t in targets)
+            {
+                state.Reset();
+                source.SendCommand(ModeCatalog.BuildCommand(t.Flag));
+                _waiter.Wait(TimeSpan.FromMilliseconds(settle));
+
+                bool got = state.HasFrame;
+                byte obs = state.Flag;
+                var m = state.Latest;
+                bool accepted = got && obs == t.Flag;
+
+                if (opt.Format == CliFormat.Csv)
+                {
+                    stdout.WriteLine(string.Join(",",
+                        "0x" + t.Flag.ToString("X2"), t.Key, t.Kind, t.Range,
+                        got ? "0x" + obs.ToString("X2") : "",
+                        m?.Kind ?? "", m?.Range ?? "",
+                        accepted ? "1" : "0", state.Frames.ToString()));
+                }
+                else
+                {
+                    stdout.WriteLine("{\"flag\":" + Json.Str("0x" + t.Flag.ToString("X2")) +
+                                     ",\"key\":" + Json.Str(t.Key) +
+                                     ",\"kind\":" + Json.Str(t.Kind) +
+                                     ",\"range\":" + Json.Str(t.Range) +
+                                     ",\"observed\":" + Json.Str(got ? "0x" + obs.ToString("X2") : null) +
+                                     ",\"obsKind\":" + Json.Str(m?.Kind) +
+                                     ",\"obsRange\":" + Json.Str(m?.Range) +
+                                     ",\"accepted\":" + Json.Bool(accepted) +
+                                     ",\"frames\":" + state.Frames + "}");
+                }
+                stdout.Flush();
+            }
+
+            // 探测完回到 VDC AUTO，避免把表留在电容/温度之类的档
+            source.SendCommand(ModeCatalog.BuildCommand(0x28));
+            _waiter.Wait(TimeSpan.FromMilliseconds(settle));
+            source.Disconnect();
+            return ExitOk;
+        }
+
+        /// <summary>探测期间共享的最新一帧状态（回调来自 BLE 线程，加锁读取）。</summary>
+        private sealed class ProbeState
+        {
+            private readonly int _counts;
+            private readonly object _lock = new object();
+            private byte _flag;
+            private Measurement _latest;
+            private bool _hasFrame;
+            private int _frames;
+
+            public ProbeState(int counts) { _counts = counts > 0 ? counts : 60000; }
+
+            public void OnFrame(byte[] data)
+            {
+                if (data == null || data.Length < 7) return;
+                var m = MeasurementParser.Parse(data, _counts);
+                if (!m.IsValid) return;
+                lock (_lock)
+                {
+                    _flag = data[5];
+                    _latest = m;
+                    _hasFrame = true;
+                    _frames++;
+                }
+            }
+
+            public void Reset()
+            {
+                lock (_lock) { _hasFrame = false; _latest = null; }
+            }
+
+            public bool HasFrame { get { lock (_lock) return _hasFrame; } }
+            public byte Flag { get { lock (_lock) return _flag; } }
+            public Measurement Latest { get { lock (_lock) return _latest; } }
+            public int Frames { get { lock (_lock) return _frames; } }
+        }
 
         // ---------------- record ----------------
 
@@ -237,6 +377,13 @@ namespace Dm40.Cli
 
             stdout.WriteLine("{\"recorded\":" + session.Waveform.Count + ",\"path\":" + Json.Str(opt.OutFile) + "}");
             source.Disconnect();
+
+            // 同 stream：0 帧不算成功（契约 §退出码 3）
+            if (session.Waveform.Count == 0)
+            {
+                stderr.WriteLine("0 帧数据：录制文件为空，链路未真正就绪");
+                return ExitConnectFailed;
+            }
             return ExitOk;
         }
 

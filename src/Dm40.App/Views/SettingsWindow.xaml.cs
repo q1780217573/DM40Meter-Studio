@@ -79,6 +79,7 @@ namespace Dm40.App.Views
             _vm.AutoConnect = AutoConnectBox.IsChecked == true;
             var dir = (ShotDirBox.Text ?? "").Trim();
             if (dir.Length > 0) _vm.ScreenshotDir = dir;
+            _vm.SaveSettings();   // 落盘：settings.ini（2026-11-25 补，原版重启即丢）
             DialogResult = true;
             Close();
         }

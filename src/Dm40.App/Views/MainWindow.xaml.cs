@@ -68,6 +68,58 @@ namespace Dm40.App.Views
             _vm.PacketLog.CollectionChanged += OnPacketLogChanged;
             // 一键截图：渲染整个窗口为 PNG 保存到 ScreenshotDir
             _vm.ScreenshotRequested += CaptureWindow;
+
+            // 双游标：按钮 → JS 进入点选态；每 250ms 轮询一次游标信息回填 Δt/ΔV
+            _vm.CursorPickRequested += w =>
+            {
+                DiagW("[cursor] pick " + w);
+                Eval("dm40.pickCursor('" + w + "')");
+            };
+            _vm.CursorClearRequested += () =>
+            {
+                DiagW("[cursor] clear");
+                Eval("dm40.clearCursors()");
+            };
+            _cursorTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+            _cursorTimer.Tick += async (s, e) => await PollCursorAsync();
+            _cursorTimer.Start();
+        }
+
+        // ===================== 双游标（JS → C# 回读） =====================
+
+        private DispatcherTimer _cursorTimer;
+        private string _lastCursorPayload;
+        private int _lastReplayPlotPoints = -1;
+
+        /// <summary>
+        /// 轮询 JS 侧游标状态（"A|x|y" / "AB|..."）。用轮询而不是 postMessage，
+        /// 是为了不改 WebView2 的消息通道配置；250ms 一次的开销可忽略。
+        /// </summary>
+        private async System.Threading.Tasks.Task PollCursorAsync()
+        {
+            if (!_webViewReady || _vm == null) return;
+            try
+            {
+                var raw = await WaveformWeb.CoreWebView2.ExecuteScriptAsync("dm40.cursorInfo()");
+                var payload = Unquote(raw);
+                if (payload == _lastCursorPayload) return;   // 无变化不打扰 UI
+                _lastCursorPayload = payload;
+                DiagW("[cursor] \"" + payload + "\"");   // 游标回读留痕，便于自动化验证
+                _vm.UpdateCursorInfo(payload);
+            }
+            catch { /* 页面重建瞬间可能抛，忽略 */ }
+        }
+
+        /// <summary>ExecuteScriptAsync 返回的是 JSON 字面量（带引号），这里还原成原始字符串。</summary>
+        private static string Unquote(string json)
+        {
+            if (string.IsNullOrEmpty(json) || json == "null") return "";
+            if (json.Length >= 2 && json[0] == '"' && json[json.Length - 1] == '"')
+            {
+                var s = json.Substring(1, json.Length - 2);
+                return s.Replace("\\\"", "\"").Replace("\\\\", "\\");
+            }
+            return json;
         }
 
         // ===================== 一键截图（FR：渲染窗口 → PNG 落盘） =====================
@@ -274,6 +326,13 @@ namespace Dm40.App.Views
             }
             seriesJson.Append(']');
             Eval("dm40.setSeries(" + seriesJson + ")");
+
+            // 回放波形诊断（2026-11-25）：回放是否能出图，靠日志里的点数确认，不靠肉眼
+            if (replay && (_lastReplayPlotPoints < 0 || n == 0 || n - _lastReplayPlotPoints >= 20))
+            {
+                _lastReplayPlotPoints = n;
+                DiagW("[plot] replay points=" + n + " buffersPts=" + pts.Length);
+            }
 
             // 单位变化 → setUnit（tooltip 显示联动）
             if (_vm.Unit != _lastUnit) { _lastUnit = _vm.Unit; Eval("dm40.setUnit(" + JsStr(_vm.Unit) + ")"); }

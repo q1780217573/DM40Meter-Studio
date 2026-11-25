@@ -12,14 +12,24 @@
 <body>
 <div id="chart"></div>
 <script>
-// 波形页：所有呈现与交互均用 ECharts 默认控件——tooltip 悬停、toolbox（区域缩放/还原/保存为图片）、
-// dataZoom inside（滚轮缩放 + 拖拽平移）、dataZoom slider（底部缩略条）。C# 仅经 window.dm40 喂数据。
+// 波形页：所有呈现与交互均用 ECharts 默认控件——tooltip 悬停、dataZoom inside（滚轮缩放 + 拖拽平移）、
+// dataZoom slider（底部缩略条）。C# 仅经 window.dm40 喂数据。
+// 2026-11-25 新增双游标：dm40.pickCursor('A'|'B') 进入点选态，下一次点击波形区落游标；
+// dm40.cursorInfo() 回传 "A|x|y" / "AB|xa|ya|xb|yb" 供 C# 计算 Δt/ΔV 显示。
+// graphic 元素（框选矩形 + 游标线 + 标签）统一由 renderGraphics() 重建，
+// 因为 setOption 的 graphic 是 merge 语义，必须 replaceMerge 才能真清除。
 (function () {
   var chart = echarts.init(document.getElementById('chart'), null, { renderer: 'canvas' });
   var mode = 'live';        // 'live' | 'replay'
   var win = 60;             // 实时窗口秒数（C# setWindow）
   var unit = '';            // 单位（tooltip 显示）
   var xs = [], ys = [];
+
+  var cursorA = null;       // 游标 A 的 X（数据坐标，秒）
+  var cursorB = null;       // 游标 B 的 X
+  var pendingPick = null;   // 'A' | 'B'：下一次点击落到哪个游标
+  var selRect = null;       // 框选矩形（像素）{x0,x1}
+  var dragStart = null;     // 框选起点（像素）
 
   function fmt(v) {
     if (v == null || isNaN(v)) return '--';
@@ -105,13 +115,110 @@
     chart.setOption({ xAxis: { min: mode === 'live' ? -win : null, max: mode === 'live' ? 0 : null } });
   }
 
+  // ---------------- graphic 统一渲染（框选 + 游标）----------------
+
+  function gridRect() {
+    try { return chart.getModel().getComponent('grid', 0).coordinateSystem.getRect(); }
+    catch (_) { return null; }
+  }
+
+  function pxOfX(x) {
+    try {
+      var p = chart.convertToPixel({ xAxisIndex: 0 }, x);
+      if (p == null) return null;
+      return (typeof p === 'number') ? p : p[0];
+    } catch (_) { return null; }
+  }
+
+  // 游标落在最近的样本点上（返回该点的 Y；无数据返回 null）
+  function yAt(x) {
+    if (!xs.length) return null;
+    var best = 0, bd = Infinity;
+    for (var i = 0; i < xs.length; i++) {
+      var d = Math.abs(xs[i] - x);
+      if (d < bd) { bd = d; best = i; }
+    }
+    return ys[best];
+  }
+
+  function renderGraphics() {
+    var items = [];
+    var r = gridRect();
+
+    if (r && selRect) {
+      items.push({
+        type: 'rect', silent: true, z: 100,
+        shape: {
+          x: Math.min(selRect.x0, selRect.x1), y: r.y,
+          width: Math.abs(selRect.x1 - selRect.x0), height: r.height
+        },
+        style: { fill: 'rgba(129,140,248,0.14)', stroke: '#818CF8', lineWidth: 1, lineDash: [4, 4] }
+      });
+    }
+
+    if (r) {
+      var cursors = [
+        { x: cursorA, name: 'A', color: '#22D3EE' },
+        { x: cursorB, name: 'B', color: '#F472B6' }
+      ];
+      for (var i = 0; i < cursors.length; i++) {
+        var c = cursors[i];
+        if (c.x == null) continue;
+        var px = pxOfX(c.x);
+        if (px == null) continue;
+        items.push({
+          type: 'line', silent: true, z: 90,
+          shape: { x1: px, y1: r.y, x2: px, y2: r.y + r.height },
+          style: { stroke: c.color, lineWidth: 1, lineDash: [5, 4] }
+        });
+        items.push({
+          type: 'text', silent: true, z: 95, position: [px + 4, r.y + 4],
+          style: { text: c.name + ' ' + Number(c.x).toFixed(1) + 's', fill: c.color, fontSize: 10 }
+        });
+      }
+    }
+
+    chart.setOption({ graphic: items }, { replaceMerge: ['graphic'] });
+  }
+
+  // 像素 X → 数据 X。优先 ECharts 原生换算，失败时按当前 X 轴可见范围线性插值兜底。
+  // （2026-11-25 实测：convertFromPixel 在某些状态下返回 NaN，必须兜底，否则游标"点了没反应"）
+  function pixelToX(px) {
+    var gr = gridRect();
+    if (!gr || gr.width <= 0) return null;
+
+    try {
+      var c = chart.convertFromPixel({ xAxisIndex: 0 }, [px, gr.y + gr.height / 2]);
+      var v = Array.isArray(c) ? c[0] : c;
+      if (v != null && isFinite(v)) return v;
+    } catch (_) { /* 走兜底 */ }
+
+    try {
+      var m = chart.getModel().getComponent('xAxis', 0);
+      var ext = m.axis.scale.getExtent();
+      if (ext && isFinite(ext[0]) && isFinite(ext[1]) && ext[1] > ext[0])
+        return ext[0] + (px - gr.x) / gr.width * (ext[1] - ext[0]);
+    } catch (_) { /* ignore */ }
+
+    return null;
+  }
+
   window.dm40 = {
     setSeries: function (points) {
       xs = []; ys = [];
       for (var i = 0; i < points.length; i++) { xs.push(points[i][0]); ys.push(points[i][1]); }
       chart.setOption({ series: [{ id: 'reading', data: zip() }] });
+      renderGraphics();   // 游标位置/读数随数据更新
     },
-    setMode: function (m) { mode = m === 'replay' ? 'replay' : 'live'; applyAxis(); },
+    setMode: function (m) {
+      var next = m === 'replay' ? 'replay' : 'live';
+      var changed = next !== mode;
+      mode = next;
+      applyAxis();
+      // 两种模式的 X 轴语义不同（回放是相对秒，实时是负秒），切模式清游标避免误读
+      if (changed) { cursorA = null; cursorB = null; pendingPick = null; }
+      renderGraphics();
+    },
     setWindow: function (seconds) { win = seconds || 60; if (mode === 'live') applyAxis(); },
     setUnit: function (u) { unit = u || ''; },
     setLimits: function (upper, lower, u) {
@@ -121,44 +228,86 @@
       if (lower != null) ml.push({ yAxis: lower, lineStyle: { color: '#F59E0B', type: 'dashed', width: 1.5 }, label: { show: true, position: 'insideEndBottom', color: '#F59E0B', fontSize: 10, formatter: '下限 ' + fmt(lower) + unit } });
       chart.setOption({ series: [{ id: 'reading', markLine: { data: ml } }] });
     },
-    clear: function () { xs = []; ys = []; chart.setOption({ series: [{ id: 'reading', data: [] }] }); }
+
+    // ---- 双游标 ----
+    pickCursor: function (which) {
+      pendingPick = which === 'B' ? 'B' : 'A';
+      chart.getDom().style.cursor = 'crosshair';
+    },
+    clearCursors: function () {
+      cursorA = null; cursorB = null; pendingPick = null;
+      chart.getDom().style.cursor = '';
+      renderGraphics();
+    },
+    cursorInfo: function () {
+      function pick(x) { return x == null ? null : { x: x, y: yAt(x) }; }
+      var a = pick(cursorA), b = pick(cursorB);
+      function n(v) { return (v == null || isNaN(v)) ? 'NaN' : Number(v).toFixed(4); }
+      if (a && b) return 'AB|' + n(a.x) + '|' + n(a.y) + '|' + n(b.x) + '|' + n(b.y);
+      if (a) return 'A|' + n(a.x) + '|' + n(a.y);
+      if (b) return 'B|' + n(b.x) + '|' + n(b.y);
+      // 已按下"游标 A/B"但还没点击：回传待选状态，C# 侧据此提示用户
+      if (pendingPick) return 'P|' + pendingPick;
+      return '';
+    },
+
+    clear: function () { xs = []; ys = []; chart.setOption({ series: [{ id: 'reading', data: [] }] }); renderGraphics(); }
   };
 
   // 鼠标区域框选缩放（X 轴）：拖出矩形 → 按绘图区像素百分比 dataZoom 缩放
   //（百分比在实时滚动数据中保持稳定，不受绝对秒坐标漂移影响）；双击还原全域。不使用 toolbox 图标。
   var dom = chart.getDom();
-  var dragStart = null;
   function evtOffset(evt) { var r = dom.getBoundingClientRect(); return [evt.clientX - r.left, evt.clientY - r.top]; }
-  function drawSel(x0, x1) {
-    chart.setOption({ graphic: [{ id: 'selBox', type: 'rect', silent: true, z: 100,
-      shape: { x: Math.min(x0, x1), y: 0, width: Math.abs(x1 - x0), height: dom.clientHeight },
-      style: { fill: 'rgba(129,140,248,0.14)', stroke: '#818CF8', lineWidth: 1, lineDash: [4, 4] } }] });
-  }
-  function gridRect() { return chart.getModel().getComponent('grid', 0).coordinateSystem.getRect(); }
-  // ECharts 的 graphic 是 merge 模式：setOption({graphic:[]}) 空数组会被忽略、旧元素不移除；
-  // 必须 replaceMerge:['graphic'] 才能真正清除框选矩形。
-  function clearSel() { chart.setOption({ graphic: [] }, { replaceMerge: ['graphic'] }); }
+
   dom.addEventListener('mousedown', function (e) {
     if (e.button !== 0) return;
     var p = evtOffset(e);
-    try { if (!chart.containPixel('grid', p)) return; } catch (_) { return; }
+    var inGrid = false;
+    try { inGrid = chart.containPixel('grid', p); } catch (_) { inGrid = false; }
+    if (!inGrid) return;
+
+    // 游标点选优先于框选
+    if (pendingPick) {
+      var xv = pixelToX(p[0]);
+      if (xv != null && isFinite(xv)) {
+        if (pendingPick === 'A') cursorA = xv; else cursorB = xv;
+      }
+      pendingPick = null;
+      dom.style.cursor = '';
+      renderGraphics();
+      return;
+    }
+
     dragStart = p[0];
   });
-  window.addEventListener('mousemove', function (e) { if (dragStart != null) drawSel(dragStart, evtOffset(e)[0]); });
+
+  window.addEventListener('mousemove', function (e) {
+    if (dragStart == null) return;
+    selRect = { x0: dragStart, x1: evtOffset(e)[0] };
+    renderGraphics();
+  });
+
   window.addEventListener('mouseup', function (e) {
     if (dragStart == null) return;
-    var x0 = dragStart; dragStart = null;          // 先置 null，阻止后续 mousemove 重画矩形
+    var x0 = dragStart;
+    dragStart = null;                 // 先置 null，阻止后续 mousemove 重画矩形
     var x1 = evtOffset(e)[0];
-    clearSel();                                     // 取消框选矩形（replaceMerge 真正移除）
+    selRect = null;                   // 取消框选矩形
+    renderGraphics();
     if (Math.abs(x1 - x0) < 5) return;
+
     var r = gridRect();
+    if (!r || r.width <= 0) return;
     var a = (Math.min(x0, x1) - r.x) / r.width * 100;
     var b = (Math.max(x0, x1) - r.x) / r.width * 100;
     chart.dispatchAction({ type: 'dataZoom', start: Math.max(0, a), end: Math.min(100, b) });
   });
+
   dom.addEventListener('dblclick', function () { chart.dispatchAction({ type: 'dataZoom', start: 0, end: 100 }); });
 
-  window.addEventListener('resize', function () { chart.resize(); });
+  // 缩放/平移后重算游标像素位置
+  chart.on('dataZoom', function () { renderGraphics(); });
+  window.addEventListener('resize', function () { chart.resize(); renderGraphics(); });
 })();
 </script>
 </body>

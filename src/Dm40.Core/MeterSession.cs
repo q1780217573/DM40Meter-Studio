@@ -23,6 +23,7 @@ namespace Dm40.Core
             Statistics = new MeasurementStatistics();
             Alarm = new ThresholdAlarm(clock);
             Waveform = new WaveformBuffer();
+            Peak = new PeakHold();
 
             _source.FrameReceived += OnFrame;
             Alarm.Triggered += e => AlarmTriggered?.Invoke(e);
@@ -36,6 +37,9 @@ namespace Dm40.Core
 
         /// <summary>波形缓冲（CSV 导出的数据源，FR-005/§5.4）。</summary>
         public WaveformBuffer Waveform { get; }
+
+        /// <summary>峰值保持（最大值/最小值及其出现时刻，2026-11-25 新增）。</summary>
+        public PeakHold Peak { get; }
 
         /// <summary>录制器（由 App 在启动录制时创建并赋值）。</summary>
         public CsvRecorder Recorder { get; set; }
@@ -81,6 +85,7 @@ namespace Dm40.Core
             {
                 Statistics.Reset();
                 Waveform.Clear();
+                Peak.Reset();          // 峰值跨量纲同样无意义，跟统计一起清
                 ModeChanged?.Invoke(m.Kind, _lastKind);
             }
             _lastKind = m.Kind;
@@ -92,6 +97,7 @@ namespace Dm40.Core
                 Statistics.Add(m.NormValue.Value);
                 Alarm.Feed(m.NormValue.Value);
                 Waveform.Add(now, m.NormValue.Value);
+                Peak.Update(m.NormValue.Value, m.DisplayUnit, m.Kind, now);
 
                 Recorder?.Write(new CsvRecord
                 {

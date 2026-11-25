@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Linq;
 using System.Windows;
 using System.Windows.Media;
@@ -66,6 +67,22 @@ namespace Dm40.App.ViewModels
             ConnectDisconnectCommand = new RelayCommand(() => { if (IsConnected) Disconnect(); else Connect(); }, () => SelectedDevice != null || IsConnected);
             ToggleRecordingCommand = new RelayCommand(ToggleRecording);
             ResetStatsCommand = new RelayCommand(() => _session.Statistics.Reset());
+            ResetPeakCommand = new RelayCommand(ResetPeakDisplay);
+            CursorPickACommand = new RelayCommand(() =>
+            {
+                CursorInfoText = "点击波形区放置游标 A";
+                CursorPickRequested?.Invoke("A");
+            });
+            CursorPickBCommand = new RelayCommand(() =>
+            {
+                CursorInfoText = "点击波形区放置游标 B";
+                CursorPickRequested?.Invoke("B");
+            });
+            CursorClearCommand = new RelayCommand(() =>
+            {
+                CursorClearRequested?.Invoke();
+                CursorInfoText = "";
+            });
             ClearPacketLogCommand = new RelayCommand(() => { PacketLog.Clear(); PacketFailCount = 0; RaisePacketStatsChanged(); });
             HoldCommand = new RelayCommand(() => { Send(HoldActive ? ProtocolConstants.CmdHoldOff : ProtocolConstants.CmdHoldOn); HoldActive = !HoldActive; }, () => CanOperateDevice);
             AutoCommand = new RelayCommand(() => { Send(AutoActive ? ProtocolConstants.CmdAutoOff : ProtocolConstants.CmdAutoOn); AutoActive = !AutoActive; }, () => CanOperateDevice);
@@ -230,6 +247,116 @@ namespace Dm40.App.ViewModels
         private string _statSummary = "样本 0 · 时长 00:00:00";
         public string StatSummary { get => _statSummary; private set => Set(ref _statSummary, value); }
         private DateTime? _statStart;
+
+        // ===================== 峰值保持（2026-11-25 新增）=====================
+
+        public RelayCommand ResetPeakCommand { get; }
+
+        private string _peakMaxText = "--";
+        /// <summary>峰值最大值（含单位）。</summary>
+        public string PeakMaxText { get => _peakMaxText; private set => Set(ref _peakMaxText, value); }
+
+        private string _peakMinText = "--";
+        /// <summary>峰值最小值（含单位）。</summary>
+        public string PeakMinText { get => _peakMinText; private set => Set(ref _peakMinText, value); }
+
+        private string _peakMaxTime = "";
+        /// <summary>最大值出现的时刻（本地时间 HH:mm:ss）。</summary>
+        public string PeakMaxTime { get => _peakMaxTime; private set => Set(ref _peakMaxTime, value); }
+
+        private string _peakMinTime = "";
+        /// <summary>最小值出现的时刻（本地时间 HH:mm:ss）。</summary>
+        public string PeakMinTime { get => _peakMinTime; private set => Set(ref _peakMinTime, value); }
+
+        private string _peakSpan = "--";
+        /// <summary>峰峰值 = Max - Min（与统计面板的 Δ 口径一致，但按极值时刻独立累计）。</summary>
+        public string PeakSpan { get => _peakSpan; private set => Set(ref _peakSpan, value); }
+
+        /// <summary>刷新峰值显示（每帧节流刷新时调用）。</summary>
+        private void SyncPeakDisplay()
+        {
+            var pk = _session.Peak;
+            if (!pk.HasValue) return;   // 无值时保留上一次显示，避免读数间歇性 OL 把极值抹掉
+
+            string u = string.IsNullOrEmpty(pk.Unit) ? "" : " " + pk.Unit;
+            PeakMaxText = Fmt(pk.Max) + u;
+            PeakMinText = Fmt(pk.Min) + u;
+            PeakMaxTime = pk.MaxAt.HasValue ? pk.MaxAt.Value.ToLocalTime().ToString("HH:mm:ss") : "";
+            PeakMinTime = pk.MinAt.HasValue ? pk.MinAt.Value.ToLocalTime().ToString("HH:mm:ss") : "";
+            PeakSpan = Fmt(pk.Max - pk.Min) + u;
+        }
+
+        /// <summary>清零峰值保持（用户点「清零峰值」时调用）。</summary>
+        private void ResetPeakDisplay()
+        {
+            _session.Peak.Reset();
+            PeakMaxText = "--";
+            PeakMinText = "--";
+            PeakMaxTime = "";
+            PeakMinTime = "";
+            PeakSpan = "--";
+        }
+
+        // ===================== 双游标（2026-11-25 新增）=====================
+
+        public RelayCommand CursorPickACommand { get; }
+        public RelayCommand CursorPickBCommand { get; }
+        public RelayCommand CursorClearCommand { get; }
+
+        /// <summary>请求 View 进入点选态（参数 "A" / "B"）：下一次点击波形区落下游标。</summary>
+        public event Action<string> CursorPickRequested;
+        /// <summary>请求 View 清除两条游标。</summary>
+        public event Action CursorClearRequested;
+
+        private string _cursorInfoText = "";
+        /// <summary>游标读数与 Δt / ΔV 的显示文本（由 View 轮询 dm40.cursorInfo() 回填）。</summary>
+        public string CursorInfoText { get => _cursorInfoText; private set => Set(ref _cursorInfoText, value); }
+
+        /// <summary>
+        /// 解析 JS 回传的游标信息：""（无游标）/ "A|x|y" / "B|x|y" / "AB|xa|ya|xb|yb"。
+        /// x 为波形 X 轴秒数，y 为落点处最近样本的值。
+        /// </summary>
+        public void UpdateCursorInfo(string payload)
+        {
+            if (string.IsNullOrEmpty(payload)) { CursorInfoText = ""; return; }
+
+            var p = payload.Split('|');
+            string u = string.IsNullOrEmpty(Unit) ? "" : " " + Unit;
+
+            // "P|A" / "P|B"：已按下按钮、等待在波形区点击落点
+            if (p.Length >= 2 && p[0] == "P")
+            {
+                CursorInfoText = p[1] == "B" ? "请在波形区点击放置游标 B" : "请在波形区点击放置游标 A";
+                return;
+            }
+
+            if (p.Length >= 3 && (p[0] == "A" || p[0] == "B"))
+            {
+                double x, y;
+                if (!TryParseInv(p[1], out x) || !TryParseInv(p[2], out y)) { CursorInfoText = ""; return; }
+                CursorInfoText = $"{p[0]} {x:0.0}s · {y:0.####}{u}";
+                return;
+            }
+
+            if (p.Length >= 5 && p[0] == "AB")
+            {
+                double xa, ya, xb, yb;
+                if (!TryParseInv(p[1], out xa) || !TryParseInv(p[2], out ya) ||
+                    !TryParseInv(p[3], out xb) || !TryParseInv(p[4], out yb))
+                {
+                    CursorInfoText = "";
+                    return;
+                }
+                CursorInfoText = $"A {xa:0.0}s {ya:0.####}{u} · B {xb:0.0}s {yb:0.####}{u} · " +
+                                 $"Δt {Math.Abs(xb - xa):0.00}s · ΔV {Math.Abs(yb - ya):0.####}{u}";
+                return;
+            }
+
+            CursorInfoText = "";
+        }
+
+        private static bool TryParseInv(string s, out double v) =>
+            double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out v);
 
         // ===================== 阈值报警 =====================
 
@@ -872,6 +999,12 @@ namespace Dm40.App.ViewModels
                 OnPropertyChanged(nameof(StatAvg));
                 OnPropertyChanged(nameof(StatDelta));
                 OnPropertyChanged(nameof(StatCount));
+                // 峰值保持已随 MeterSession 一起清零，这里把显示同步成空
+                PeakMaxText = "--";
+                PeakMinText = "--";
+                PeakMaxTime = "";
+                PeakMinTime = "";
+                PeakSpan = "--";
             }));
         }
 
@@ -949,6 +1082,7 @@ namespace Dm40.App.ViewModels
                 var el = DateTime.Now - _statStart.Value;
                 StatSummary = $"样本 {StatCount:N0} · 时长 {el:hh\\:mm\\:ss}";
             }
+            SyncPeakDisplay();
 
             // 帧率（每秒窗口）
             var span = (DateTime.UtcNow - _frameWindowStart).TotalSeconds;

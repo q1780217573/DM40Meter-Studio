@@ -233,7 +233,20 @@
                             <Border Grid.Row="0" Style="{StaticResource Well}" Padding="0">
                                 <wv2:WebView2 x:Name="WaveformWeb"/>
                             </Border>
-                            <TextBlock Grid.Row="1" Text="拖拽框选缩放 · 滚轮缩放 · 双击还原 · P 暂停" Foreground="{StaticResource FgFaintBrush}" FontSize="11.5" Margin="0,6,0,0"/>
+                            <!-- 底部：操作提示 + 双游标（2026-11-25） -->
+                            <DockPanel Grid.Row="1" Margin="0,6,0,0">
+                                <TextBlock Text="拖拽框选缩放 · 滚轮缩放 · 双击还原 · P 暂停" Foreground="{StaticResource FgFaintBrush}" FontSize="11.5" DockPanel.Dock="Left" VerticalAlignment="Center"/>
+                                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <Button Style="{StaticResource CtrlBtn}" FontSize="11" Padding="8,2" Margin="0,0,6,0"
+                                            Content="游标 A" ToolTip="点一下按钮，再点波形区落游标 A" Command="{Binding CursorPickACommand}"/>
+                                    <Button Style="{StaticResource CtrlBtn}" FontSize="11" Padding="8,2" Margin="0,0,6,0"
+                                            Content="游标 B" ToolTip="点一下按钮，再点波形区落游标 B" Command="{Binding CursorPickBCommand}"/>
+                                    <Button Style="{StaticResource CtrlBtn}" FontSize="11" Padding="8,2"
+                                            Content="✕ 游标" ToolTip="清除两条游标" Command="{Binding CursorClearCommand}"/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding CursorInfoText}" Foreground="{StaticResource DeltaBrush}" FontSize="11.5"
+                                           HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,14,0" TextTrimming="CharacterEllipsis"/>
+                            </DockPanel>
                         </Grid>
 
                         <!-- 原始报文页 -->
@@ -329,6 +342,38 @@
                             </Border>
                         </UniformGrid>
                         <TextBlock Text="{Binding StatSummary}" Foreground="{StaticResource FgFaintBrush}" FontSize="11.5" HorizontalAlignment="Center" Margin="0,6,0,0"/>
+
+                        <!-- 峰值保持（2026-11-25）：极值 + 出现时刻，独立于统计区的 Min/Max -->
+                        <Border Background="{StaticResource BgBrush}" BorderBrush="{StaticResource BorderWellBrush}" BorderThickness="1" CornerRadius="6" Padding="8,5" Margin="2,8,2,0">
+                            <StackPanel>
+                                <DockPanel Margin="0,0,0,3">
+                                    <TextBlock Text="峰值保持" FontSize="11" Foreground="{StaticResource FgFaintBrush}" DockPanel.Dock="Left" VerticalAlignment="Center"/>
+                                    <Button Content="清零" Command="{Binding ResetPeakCommand}" DockPanel.Dock="Right" HorizontalAlignment="Right"
+                                            Background="{StaticResource InputBrush}" Foreground="{StaticResource FgDimBrush}" BorderBrush="{StaticResource BorderLightBrush}"
+                                            BorderThickness="1" Padding="6,0" FontSize="10.5" Cursor="Hand"/>
+                                </DockPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition/>
+                                        <RowDefinition/>
+                                        <RowDefinition/>
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="MAX" FontSize="10.5" Foreground="{StaticResource MaxBrush}" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding PeakMaxText}" FontFamily="{StaticResource DigitalFont}" FontSize="13" Foreground="{StaticResource MaxBrush}" Margin="6,0" HorizontalAlignment="Right"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding PeakMaxTime}" FontSize="10" Foreground="{StaticResource FgFaintBrush}" VerticalAlignment="Center" MinWidth="56"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="MIN" FontSize="10.5" Foreground="{StaticResource MinBrush}" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding PeakMinText}" FontFamily="{StaticResource DigitalFont}" FontSize="13" Foreground="{StaticResource MinBrush}" Margin="6,0" HorizontalAlignment="Right"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding PeakMinTime}" FontSize="10" Foreground="{StaticResource FgFaintBrush}" VerticalAlignment="Center" MinWidth="56"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="峰峰" FontSize="10.5" Foreground="{StaticResource FgFaintBrush}" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding PeakSpan}" FontFamily="{StaticResource DigitalFont}" FontSize="12" Foreground="{StaticResource DeltaBrush}" Margin="6,0" HorizontalAlignment="Right"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </Border>
 

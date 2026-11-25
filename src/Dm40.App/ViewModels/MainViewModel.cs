@@ -457,6 +457,64 @@ namespace Dm40.App.ViewModels
         /// <summary>一键截图保存目录（默认 图片\DM40MeterStudio，可在设置修改）。</summary>
         public string ScreenshotDir { get => _screenshotDir; set => Set(ref _screenshotDir, value); }
 
+        // ===================== 量程下拉（2026-11-25 新增）=====================
+
+        /// <summary>当前档位下设备真认的量程列表（含 AUTO / AUTO+），随回帧刷新。</summary>
+        public ObservableCollection<ModeEntry> RangeOptions { get; } = new ObservableCollection<ModeEntry>();
+
+        private ModeEntry _selectedRange;
+        private bool _suppressRangeSend;   // 回帧同步时置位，避免"设备告诉我当前量程"又被当成用户操作发回去
+
+        /// <summary>
+        /// 当前量程。用户改动即下发 AF 05 03 06 01 &lt;flag&gt;；设备回帧同步时只更新显示、不回发。
+        /// </summary>
+        public ModeEntry SelectedRange
+        {
+            get => _selectedRange;
+            set
+            {
+                if (!Set(ref _selectedRange, value)) return;
+                if (_suppressRangeSend || value == null || !CanOperateDevice) return;
+                Send(ModeCatalog.BuildCommand(value.Flag));
+            }
+        }
+
+        /// <summary>
+        /// 用回帧的 Kind/Range 对齐下拉：档位变了就换列表，量程变了就换选中项。
+        /// 设备侧拧旋钮/切档同样会被这套逻辑捕获（权威源是回帧，不是按钮回调）。
+        /// </summary>
+        private void SyncRangeOptions(string kind, string range)
+        {
+            if (string.IsNullOrEmpty(kind)) return;
+            var opts = ModeCatalog.ForKind(kind);
+            if (opts.Count == 0) return;
+
+            bool rebuild = RangeOptions.Count != opts.Count;
+            if (!rebuild)
+            {
+                for (int i = 0; i < opts.Count; i++)
+                    if (RangeOptions[i].Key != opts[i].Key) { rebuild = true; break; }
+            }
+            if (rebuild)
+            {
+                RangeOptions.Clear();
+                foreach (var o in opts) RangeOptions.Add(o);
+            }
+
+            // 回帧的 Range 是"满量程名"，可能与档位名不同（如 1000V 档回 6000V、10A 档回 60A），
+            // 匹配不上时退回 AUTO 项，保证下拉不会空着。
+            var match = opts.FirstOrDefault(o => string.Equals(o.Range, range, StringComparison.Ordinal))
+                        ?? opts.FirstOrDefault(o => o.Range == "AUTO")
+                        ?? opts[0];
+
+            if (!ReferenceEquals(match, _selectedRange))
+            {
+                _suppressRangeSend = true;
+                SelectedRange = match;
+                _suppressRangeSend = false;
+            }
+        }
+
         /// <summary>请求截图（code-behind 订阅并实际渲染窗口为 PNG）。MVVM 分离：VM 不碰 UI 元素。</summary>
         public event Action ScreenshotRequested;
 
@@ -703,6 +761,16 @@ namespace Dm40.App.ViewModels
 
         private void SendMode(string mode)
         {
+            // 优先按 ModeCatalog 的键名分发（vdc-auto / vdc-plus-ac-auto / res-online-auto ...），
+            // 这样 XAML 只需给 CommandParameter 一个键，新增档位不用再改这里。
+            var entry = ModeCatalog.Find(mode);
+            if (entry != null)
+            {
+                Send(ModeCatalog.BuildCommand(entry.Flag));
+                return;
+            }
+
+            // 旧键名兜底（保持 2026-10-26 版行为，防止外部脚本/demo 传入短名）
             switch (mode)
             {
                 case "vdc": Send(ProtocolConstants.CmdVdc); break;
@@ -715,6 +783,10 @@ namespace Dm40.App.ViewModels
                 case "cont": Send(ProtocolConstants.CmdCont); break;
                 case "hz": Send(ProtocolConstants.CmdHz); break;
                 case "temp": Send(ProtocolConstants.CmdTemp); break;
+                default:
+                    // 键名写错时不再静默：按钮点了没反应最难查（2026-11-25 踩过一次 vdc-plus-ac-auto）
+                    StatusLine = $"档位命令未识别: {mode}";
+                    break;
             }
         }
 
@@ -845,6 +917,7 @@ namespace Dm40.App.ViewModels
             Unit = m.DisplayUnit;
             Range = m.Range;
             ModeLabel = ModeLabelOf(m.Kind);
+            SyncRangeOptions(m.Kind, m.Range);
             // 副显：有协议副显（VAC 占空比/频率、DIODE 电阻、FREQ 占空比、TEMP 华氏/内部）则显示；
             // 无副显的单槽位模式（VDC/ADC/RES/CAP/CONT）副显位置复用为采样统计 + 高精度读数，
             // 避免 VDC 等常用档副显永远空白（ModeSlotMap 只有 M1 → SecondaryText/ThirdText 恒空）。
@@ -890,10 +963,13 @@ namespace Dm40.App.ViewModels
         private static string ModeLabelOf(string kind) => kind switch
         {
             "VDC" => "直流电压 · DCV",
+            "VDC+AC" => "直流+交流电压 · DCV+ACV",
             "VAC" => "交流电压 · ACV",
             "ADC" => "直流电流 · DCA",
+            "ADC+AC" => "直流+交流电流 · DCA+ACA",
             "AAC" => "交流电流 · ACA",
             "RES" => "电阻 · Ω",
+            "RES_ONLINE" => "在线电阻 · Ω",
             "CAP" => "电容 · CAP",
             "FREQ" => "频率 · HZ",
             "TEMP" => "温度 · TEMP",

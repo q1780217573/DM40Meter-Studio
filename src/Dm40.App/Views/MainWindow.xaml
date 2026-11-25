@@ -132,37 +132,56 @@
                             </ToggleButton>
                         </UniformGrid>
 
-                        <!-- 测量档位：点按切档（VDC/VAC/ADC/AAC/RES/CAP/DIODE/CONT/HZ/TEMP） -->
-                        <TextBlock Text="测量档位" Foreground="{StaticResource FgFaintBrush}" FontSize="11.5" Margin="2,4,0,4"/>
+                        <!-- 测量档位 + 量程（2026-11-25：补 VDC+AC / ADC+AC / RES_ONLINE 三档与手动量程下拉） -->
+                        <StackPanel Orientation="Horizontal" Margin="2,4,0,6">
+                            <TextBlock Text="测量档位" Foreground="{StaticResource FgFaintBrush}" FontSize="11.5" VerticalAlignment="Center"/>
+                            <TextBlock Text="量程" Foreground="{StaticResource FgFaintBrush}" FontSize="11.5" VerticalAlignment="Center" Margin="14,0,6,0"/>
+                            <ComboBox Style="{StaticResource DarkCombo}" Width="158" Height="24" FontSize="11.5"
+                                      VerticalContentAlignment="Center"
+                                      ItemsSource="{Binding RangeOptions}"
+                                      SelectedItem="{Binding SelectedRange, Mode=TwoWay}"
+                                      DisplayMemberPath="Label"
+                                      ToolTip="选择固定量程或 AUTO / AUTO+；跟随设备回帧自动同步"
+                                      IsEnabled="{Binding CanOperateDevice}"/>
+                        </StackPanel>
                         <UniformGrid Columns="4">
-                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="vdc" IsEnabled="{Binding CanOperateDevice}">
+                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="vdc-auto" IsEnabled="{Binding CanOperateDevice}">
                                 <StackPanel><TextBlock Text="直流电压" FontSize="10" HorizontalAlignment="Center"/><TextBlock Text="VDC" FontSize="8" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/></StackPanel>
                             </Button>
-                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="vac" IsEnabled="{Binding CanOperateDevice}">
+                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="vdc-plusac-auto" IsEnabled="{Binding CanOperateDevice}">
+                                <StackPanel><TextBlock Text="直流+交流" FontSize="10" HorizontalAlignment="Center"/><TextBlock Text="VDC+AC" FontSize="8" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/></StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="vac-auto" IsEnabled="{Binding CanOperateDevice}">
                                 <StackPanel><TextBlock Text="交流电压" FontSize="10" HorizontalAlignment="Center"/><TextBlock Text="VAC" FontSize="8" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/></StackPanel>
                             </Button>
-                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="adc" IsEnabled="{Binding CanOperateDevice}">
+                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="adc-auto" IsEnabled="{Binding CanOperateDevice}">
                                 <StackPanel><TextBlock Text="直流电流" FontSize="10" HorizontalAlignment="Center"/><TextBlock Text="ADC" FontSize="8" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/></StackPanel>
                             </Button>
-                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="aac" IsEnabled="{Binding CanOperateDevice}">
+                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="adc-plusac-auto" IsEnabled="{Binding CanOperateDevice}">
+                                <StackPanel><TextBlock Text="直流+交流" FontSize="10" HorizontalAlignment="Center"/><TextBlock Text="ADC+AC" FontSize="8" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/></StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="aac-auto" IsEnabled="{Binding CanOperateDevice}">
                                 <StackPanel><TextBlock Text="交流电流" FontSize="10" HorizontalAlignment="Center"/><TextBlock Text="AAC" FontSize="8" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/></StackPanel>
                             </Button>
-                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="res" IsEnabled="{Binding CanOperateDevice}">
+                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="res-auto" IsEnabled="{Binding CanOperateDevice}">
                                 <StackPanel><TextBlock Text="电阻" FontSize="10" HorizontalAlignment="Center"/><TextBlock Text="RES" FontSize="8" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/></StackPanel>
                             </Button>
-                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="cap" IsEnabled="{Binding CanOperateDevice}">
+                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="res-online-auto" IsEnabled="{Binding CanOperateDevice}">
+                                <StackPanel><TextBlock Text="在线电阻" FontSize="10" HorizontalAlignment="Center"/><TextBlock Text="Ω ON" FontSize="8" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/></StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="cap-auto" IsEnabled="{Binding CanOperateDevice}">
                                 <StackPanel><TextBlock Text="电容" FontSize="10" HorizontalAlignment="Center"/><TextBlock Text="CAP" FontSize="8" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/></StackPanel>
                             </Button>
-                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="diode" IsEnabled="{Binding CanOperateDevice}">
+                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="diode-auto" IsEnabled="{Binding CanOperateDevice}">
                                 <StackPanel><TextBlock Text="二极管" FontSize="10" HorizontalAlignment="Center"/><TextBlock Text="DIODE" FontSize="8" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/></StackPanel>
                             </Button>
-                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="cont" IsEnabled="{Binding CanOperateDevice}">
+                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="cont-auto" IsEnabled="{Binding CanOperateDevice}">
                                 <StackPanel><TextBlock Text="通断" FontSize="10" HorizontalAlignment="Center"/><TextBlock Text="CONT" FontSize="8" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/></StackPanel>
                             </Button>
-                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="hz" IsEnabled="{Binding CanOperateDevice}">
-                                <StackPanel><TextBlock Text="频率" FontSize="10" HorizontalAlignment="Center"/><TextBlock Text="HZ" FontSize="8" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/></StackPanel>
+                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="freq-auto" IsEnabled="{Binding CanOperateDevice}">
+                                <StackPanel><TextBlock Text="频率" FontSize="10" HorizontalAlignment="Center"/><TextBlock Text="FREQ" FontSize="8" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/></StackPanel>
                             </Button>
-                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="temp" IsEnabled="{Binding CanOperateDevice}">
+                            <Button Style="{StaticResource MatrixBtn}" Margin="3" Command="{Binding SendModeCommand}" CommandParameter="temp-auto" IsEnabled="{Binding CanOperateDevice}">
                                 <StackPanel><TextBlock Text="温度" FontSize="10" HorizontalAlignment="Center"/><TextBlock Text="TEMP" FontSize="8" Foreground="{StaticResource FgFaintBrush}" HorizontalAlignment="Center"/></StackPanel>
                             </Button>
                         </UniformGrid>

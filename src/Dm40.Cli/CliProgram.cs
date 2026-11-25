@@ -178,6 +178,12 @@ namespace Dm40.Cli
                    ",\"mode\":" + Json.Str(m.Kind) +
                    ",\"range\":" + Json.Str(m.Range) +
                    ",\"overload\":" + Json.Bool(m.Overload) +
+                   // 副显/第三读数（2026-11-25 新增，向后兼容）：温度档的 ℉、交流档的占空比/频率、
+                   // 交直流档的 DC/AC 分量都在这里，自动化与排障需要能读到。
+                   ",\"secondary\":" + Json.Str(m.SecondaryText) +
+                   ",\"secondaryUnit\":" + Json.Str(m.SecondaryUnit) +
+                   ",\"third\":" + Json.Str(m.ThirdText) +
+                   ",\"thirdUnit\":" + Json.Str(m.ThirdUnit) +
                    ",\"alarm\":" + (alarm == null ? "null" : Json.Str(alarm)) + "}";
         }
 
@@ -194,6 +200,23 @@ namespace Dm40.Cli
             int code = ConnectAndMeasure(source, opt, stderr);
             if (code != ExitOk) return code;
 
+            // 命令生效判据所需：先拿到发命令前的设备状态（flag/status 快照）
+            var probe = new ProbeState(source.DeviceCounts);
+            source.FrameReceived += probe.OnFrame;
+
+            var deadline = DateTime.UtcNow.AddSeconds(3);
+            while (!probe.HasFrame && DateTime.UtcNow < deadline)
+                _waiter.Wait(TimeSpan.FromMilliseconds(100));
+            if (!probe.HasFrame)
+            {
+                stderr.WriteLine("未收到测量帧，命令无法确认（GUI 是否占用链路？）");
+                source.Disconnect();
+                return ExitConnectFailed;
+            }
+
+            byte preFlag = probe.Flag;
+            byte preStatus = probe.Status;
+
             try
             {
                 source.SendCommand(frame);
@@ -205,9 +228,58 @@ namespace Dm40.Cli
                 return ExitSendFailed;
             }
 
-            stdout.WriteLine("{\"sent\":" + Json.Str(opt.SendCmd) + ",\"frame\":" + Json.Str(ToHex(frame)) + "}");
+            // 关键：不能发完就断开。SendCommand 是"收帧驱动"的（TryPump 在下一帧到来时才真正写出），
+            // 2026-11-25 实测：原实现发完立刻 Disconnect，设备档位从没变过——CLI 一直"假成功"。
+            bool? applied = null;
+            bool judgeable = false;
+            var sw = DateTime.UtcNow;
+            while ((DateTime.UtcNow - sw).TotalMilliseconds < 2000)
+            {
+                _waiter.Wait(TimeSpan.FromMilliseconds(150));
+                if (!probe.HasFrame) continue;
+                var r = JudgeApplied(frame, probe.Flag, probe.Status);
+                if (r.HasValue)
+                {
+                    judgeable = true;
+                    if (r.Value) { applied = true; break; }
+                    applied = false;
+                }
+            }
+
+            byte obsFlag = probe.Flag;
+            byte obsStatus = probe.Status;
             source.Disconnect();
+
+            // applied == null 表示该命令没有回读位（如 AUTO 开关），只能证明已写出
+            string appliedJson = applied.HasValue ? Json.Bool(applied.Value) : "null";
+            stdout.WriteLine("{\"sent\":" + Json.Str(opt.SendCmd) +
+                             ",\"frame\":" + Json.Str(ToHex(frame)) +
+                             ",\"applied\":" + appliedJson +
+                             ",\"observedFlag\":" + Json.Str("0x" + obsFlag.ToString("X2")) +
+                             ",\"observedStatus\":" + Json.Str("0x" + obsStatus.ToString("X2")) +
+                             ",\"frames\":" + probe.Frames + "}");
+
+            if (judgeable && applied == false)
+            {
+                stderr.WriteLine("命令未生效：设备状态未变（" + opt.SendCmd + "）");
+                return ExitSendFailed;
+            }
+            if (!judgeable)
+                stderr.WriteLine("提示：该命令无回读位，已写出但无法验证是否生效（" + opt.SendCmd + "）");
             return ExitOk;
+        }
+
+        /// <summary>
+        /// 判断命令是否真的被设备执行。
+        /// true=已生效 / false=未生效 / null=该命令没有回读位，判断不了。
+        /// </summary>
+        private static bool? JudgeApplied(byte[] cmd, byte flag, byte status)
+        {
+            if (cmd == null || cmd.Length < 6) return null;
+            if (cmd[3] == 0x06 && cmd[4] == 0x01) return flag == cmd[5];   // 档位/量程：data[5] 直接回读
+            if (cmd[3] == 0x04) return ((status & 0x80) != 0) == (cmd[5] != 0); // HOLD：bit7
+            if (cmd[3] == 0x05) return ((status & 0x20) != 0) == (cmd[5] != 0); // REL：bit5
+            return null;                                                    // AUTO 等：帧内无对应位
         }
 
         // 命令名 → 命令帧。原有 10 个别名保持 CLI 契约不变；
@@ -322,6 +394,7 @@ namespace Dm40.Cli
             private readonly int _counts;
             private readonly object _lock = new object();
             private byte _flag;
+            private byte _status;
             private Measurement _latest;
             private bool _hasFrame;
             private int _frames;
@@ -336,6 +409,7 @@ namespace Dm40.Cli
                 lock (_lock)
                 {
                     _flag = data[5];
+                    _status = data[6];
                     _latest = m;
                     _hasFrame = true;
                     _frames++;
@@ -349,6 +423,7 @@ namespace Dm40.Cli
 
             public bool HasFrame { get { lock (_lock) return _hasFrame; } }
             public byte Flag { get { lock (_lock) return _flag; } }
+            public byte Status { get { lock (_lock) return _status; } }
             public Measurement Latest { get { lock (_lock) return _latest; } }
             public int Frames { get { lock (_lock) return _frames; } }
         }
@@ -402,10 +477,20 @@ namespace Dm40.Cli
                 }));
 
             DiscoveredDevice first = null;
-            source.DeviceFound += d => { if (first == null) first = d; };
-            source.StartScan();
-            _waiter.Wait(ScanWindow);
-            source.StopScan();
+
+            // 已给 --mac 时跳过扫描：省掉固定 10s 窗口，也避免"设备没广播但在范围内"导致的误判。
+            // 未给 --mac 才扫描发现。
+            if (string.IsNullOrEmpty(opt.Mac))
+            {
+                source.DeviceFound += d => { if (first == null) first = d; };
+                source.StartScan();
+                _waiter.Wait(ScanWindow);
+                source.StopScan();
+            }
+            else
+            {
+                stderr.WriteLine("[conn] 指定 MAC，跳过扫描: " + opt.Mac);
+            }
 
             var target = first;
             if (opt.Mac != null)
